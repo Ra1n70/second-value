@@ -1,0 +1,3 @@
+/* Local subsets; regenerate with scripts/bundle-fonts.py after copy changes. */
+@font-face{font-family:'Noto Sans SC';font-style:normal;font-weight:400 700;font-display:swap;src:url('assets/fonts/noto-sans-sc-ui-v1.woff2') format('woff2')}
+@font-face{font-family:'Noto Serif SC';font-style:normal;font-weight:400 700;font-display:swap;src:url('assets/fonts/noto-serif-sc-ui-v1.woff2') format('woff2')}

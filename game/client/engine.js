@@ -1,0 +1,366 @@
+(function (root, factory) {
+  const engine = factory();
+  if (typeof module === 'object' && module.exports) module.exports = engine;
+  else root.SecondValue = engine;
+})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+  'use strict';
+  const STARTING_CASH = 1000;
+  const CRATE_SIZE = 6;
+  const MAX_SESSION_ACTIONS = 10000;
+  const RULES_VERSION = 2;
+  const THEMES = {harbor:'Old Harbor', railway:'Railway'};
+  const ROLES = {
+    restorer: {name:'The Restorer',short:'Restorer',mark:'R',tagline:'Find the value beneath the damage.',passive:'After winning, choose up to two genuine damaged objects to repair. Pay their fixed fees before selling.',skill:'Precision repair',skillText:'One ability: repair up to two eligible objects after purchase. No private inspection.',risk:'Repair gains are capped. Paying too much can still turn a good repair into a loss.'},
+    appraiser: {name:'The Appraiser',short:'Appraiser',mark:'A',tagline:'Know what everyone else is guessing.',passive:'Privately identify up to two objects across all three rounds. Ordinary sale prices are the same for everyone.',skill:'Authenticate',skillText:'Reveal one object’s identity, authenticity, condition, category, theme and exact base price.',risk:'Better information does not protect you from overbidding.'},
+    collector: {name:'The Collector',short:'Collector',mark:'C',tagline:'The missing piece changes everything.',passive:'Lock a theme before bidding. Deliver one pair of genuine objects with different identities and categories for a capped bonus.',skill:'Set delivery',skillText:'One ability: deliver one matching pair after purchase. Your chosen theme stays locked.',risk:'A crate may contain no valid pair for your chosen theme.'}
+  };
+  const ORIGINAL_ITEMS = [
+    {id:'harbor-clock',name:'Old Harbor mantel clock',shape:'clock',category:'mechanical',theme:'harbor',base:180,genuine:true,condition:'damaged',repair:{cost:80,sale:305}},
+    {id:'replica-cup',name:'Reproduction porcelain cup',shape:'cup',category:'ceramic',theme:null,base:40,genuine:false,condition:'intact'},
+    {id:'crew-badge',name:'Harbor crew badge',shape:'badge',category:'insignia',theme:'harbor',base:100,genuine:true,condition:'intact'},
+    {id:'station-clock',name:'Stationmaster’s clock',shape:'clock',category:'mechanical',theme:'railway',base:260,genuine:true,condition:'damaged',repair:{cost:90,sale:410}},
+    {id:'prop-clock',name:'Theater prop clock',shape:'clock',category:'mechanical',theme:null,base:60,genuine:false,condition:'unrepairable'},
+    {id:'tea-cup',name:'Hand-painted tea cup',shape:'cup',category:'ceramic',theme:null,base:210,genuine:true,condition:'intact'},
+    {id:'sailor-cup',name:'First mate’s enamel cup',shape:'cup',category:'ceramic',theme:'harbor',base:120,genuine:true,condition:'intact'},
+    {id:'replica-badge',name:'Replica shipping badge',shape:'badge',category:'insignia',theme:'harbor',base:30,genuine:false,condition:'intact'},
+    {id:'expo-badge',name:'World exposition medal',shape:'badge',category:'insignia',theme:'railway',base:230,genuine:true,condition:'intact'},
+    {id:'dock-camera',name:'Dockside press camera',shape:'camera',category:'imaging',theme:'harbor',base:140,genuine:true,condition:'damaged',repair:{cost:90,sale:265}},
+    {id:'toy-camera',name:'Plastic toy camera',shape:'camera',category:'imaging',theme:null,base:35,genuine:false,condition:'intact'},
+    {id:'studio-camera',name:'Studio rangefinder',shape:'camera',category:'imaging',theme:null,base:330,genuine:true,condition:'intact'},
+    {id:'harbor-radio',name:'Harbor dispatch radio',shape:'radio',category:'instrument',theme:'harbor',base:110,genuine:true,condition:'damaged',repair:{cost:70,sale:207}},
+    {id:'travel-radio',name:'Traveler’s pocket radio',shape:'radio',category:'instrument',theme:'railway',base:160,genuine:true,condition:'intact'},
+    {id:'prop-radio',name:'Display-only radio shell',shape:'radio',category:'instrument',theme:null,base:25,genuine:false,condition:'unrepairable'},
+    {id:'harbor-map',name:'Original harbor survey',shape:'map',category:'document',theme:'harbor',base:190,genuine:true,condition:'intact'},
+    {id:'map-print',name:'Tourist map reprint',shape:'map',category:'document',theme:'harbor',base:20,genuine:false,condition:'intact'},
+    {id:'star-chart',name:'Navigator’s star chart',shape:'map',category:'document',theme:null,base:280,genuine:true,condition:'intact'}
+  ].map(item=>({...item,catalogId:item.id,appearance:item.shape,authenticity:item.genuine?'genuine':'reproduction',baseValue:item.base,harbor:item.theme==='harbor'}));
+  // Balance revisions are locked at session creation. Old replays retain their
+  // original catalog themes and committed computer quotes, including future crates.
+  const ITEMS = ORIGINAL_ITEMS.map(item=>item.catalogId==='tea-cup'?{...item,theme:'railway'}:item);
+  function validateRules(version) {if(version!==1&&version!==RULES_VERSION)throw new Error('Choose a valid rules revision.');return version;}
+  function savedRules(raw) {return Object.hasOwn(raw,'rulesVersion')?validateRules(raw.rulesVersion):1;}
+  function catalogItems(gameOrVersion) {
+    const version=gameOrVersion===undefined?RULES_VERSION:typeof gameOrVersion==='number'?gameOrVersion:gameOrVersion.rulesVersion??1;
+    return validateRules(version)===1?ORIGINAL_ITEMS:ITEMS;
+  }
+  const SHAPES = {clock:'Clock-shaped object',cup:'Small ceramic object',badge:'Metal insignia',camera:'Camera-shaped object',radio:'Radio-shaped object',map:'Folded paper document'};
+  function rng(seed) {let a=seed>>>0;return function(){a+=0x6D2B79F5;let t=Math.imul(a^(a>>>15),1|a);t^=t+Math.imul(t^(t>>>7),61|t);return ((t^(t>>>14))>>>0)/4294967296;};}
+  function clone(value) {return JSON.parse(JSON.stringify(value));}
+  function validCash(value) {return Number.isSafeInteger(value)&&value>=0;}
+  function getCash(game) {return game.startingCash===undefined?STARTING_CASH:game.startingCash;}
+  function validateRole(role) {if(!Object.hasOwn(ROLES,role))throw new Error('Choose a valid role.');}
+  function validateTheme(theme) {if(!Object.hasOwn(THEMES,theme))throw new Error('Choose a valid collection theme.');}
+  function catalogFor(shape) {const pool=ITEMS.filter(item=>item.shape===shape);if(!pool.length)throw new Error('Unknown object appearance.');const prices=pool.map(item=>item.base);return {shape,label:SHAPES[shape],min:Math.min(...prices),max:Math.max(...prices)};}
+  function inspect(role,items,index) {
+    validateRole(role);
+    if(role!=='appraiser')throw new Error('Only the appraiser has a private inspection ability.');
+    const item=items[index];if(!item)throw new Error('Select an object first.');
+    return `${item.name}. ${item.genuine?'Genuine':'Reproduction'}. Condition: ${item.condition}. Category: ${item.category}. Theme: ${THEMES[item.theme]||'None'}. Base sale price: ${item.base}.`;
+  }
+  function repairGain(item) {return item.repair?item.repair.sale-item.repair.cost-item.base:0;}
+  function canRepair(item) {return item.genuine===true&&item.condition==='damaged'&&item.repair&&Number.isInteger(item.repair.cost)&&item.repair.cost>=0&&Number.isInteger(item.repair.sale)&&repairGain(item)>0&&repairGain(item)<=Math.min(60,Math.floor(item.base/4));}
+  function isPair(a,b,theme) {return a.id!==b.id&&a.catalogId!==b.catalogId&&a.category!==b.category&&a.genuine===true&&b.genuine===true&&a.theme===theme&&b.theme===theme;}
+  function targetItems(ids,items) {
+    if(!Array.isArray(ids))throw new Error('Choose a list of object IDs.');
+    if(new Set(ids).size!==ids.length)throw new Error('Select each object only once.');
+    return ids.map(id=>{const item=items.find(candidate=>candidate.id===id);if(typeof id!=='string'||!item)throw new Error('Select valid objects.');return item;});
+  }
+  function repairPlan(items,selected,cash) {
+    const selectedIds=new Set(selected.map(item=>item.id));
+    const ordinary=items.filter(item=>!selectedIds.has(item.id)).reduce((sum,item)=>sum+item.base,0);
+    const orders=selected.length===2?[selected,[selected[1],selected[0]]]:[selected];
+    for(const order of orders) {
+      let available=cash+ordinary;const processing=[];
+      for(const item of order) {
+        if(available<item.repair.cost)break;
+        const before=available;available+=item.repair.sale-item.repair.cost;
+        processing.push({id:item.id,availableBefore:before,cost:item.repair.cost,sale:item.repair.sale,availableAfter:available});
+      }
+      if(processing.length===selected.length) {
+        const sale=ordinary+selected.reduce((sum,item)=>sum+item.repair.sale,0),cost=selected.reduce((sum,item)=>sum+item.repair.cost,0);
+        return {sale,cost,bonus:0,recovery:sale-cost,repairs:order.map(item=>item.id),pair:[],processing};
+      }
+    }
+    return null;
+  }
+  function salePlan(role,items,mode,cashAfterPurchase,options={}) {
+    validateRole(role);
+    if(!['ordinary','special'].includes(mode))throw new Error('Choose a valid sale method.');
+    if(!Number.isInteger(cashAfterPurchase)||cashAfterPurchase<0)throw new Error('Available cash must be a nonnegative whole number.');
+    if(!options||typeof options!=='object'||Array.isArray(options))throw new Error('Choose valid processing options.');
+    if(!Array.isArray(items)||items.some(item=>typeof item.id!=='string'||!Number.isInteger(item.base)||item.base<0)||new Set(items.map(item=>item.id)).size!==items.length)throw new Error('The crate must contain distinct valid objects.');
+    const repairSelection=Object.hasOwn(options,'repairIds')?targetItems(options.repairIds,items):null;
+    const pairSelection=Object.hasOwn(options,'pairIds')?targetItems(options.pairIds,items):null;
+    if(repairSelection&&role!=='restorer')throw new Error('Only the restorer can select repairs.');
+    if(pairSelection&&role!=='collector')throw new Error('Only the collector can select a pair.');
+    if((repairSelection?.length||pairSelection?.length)&&mode!=='special')throw new Error('Processing requires the special sale method.');
+    const base=items.reduce((sum,item)=>sum+item.base,0);
+    const ordinary={sale:base,cost:0,bonus:0,recovery:base,repairs:[],pair:[],processing:[]};
+    if(mode==='ordinary'||role==='appraiser')return ordinary;
+    if(role==='restorer') {
+      if(repairSelection) {
+        if(repairSelection.length>2)throw new Error('Select at most two repairs.');
+        if(repairSelection.some(item=>!canRepair(item)))throw new Error('Selected object cannot be repaired.');
+        const plan=repairPlan(items,repairSelection,cashAfterPurchase);
+        if(!plan)throw new Error('Not enough cash to pay the selected repair fees first.');
+        return plan;
+      }
+      const eligible=items.filter(canRepair);let best=ordinary;
+      const candidates=eligible.map(item=>[item]);
+      for(let a=0;a<eligible.length;a++)for(let b=a+1;b<eligible.length;b++)candidates.push([eligible[a],eligible[b]]);
+      for(const selected of candidates) {const plan=repairPlan(items,selected,cashAfterPurchase);if(plan&&(plan.recovery>best.recovery||(plan.recovery===best.recovery&&plan.cost<best.cost)))best=plan;}
+      return best;
+    }
+    const theme=Object.hasOwn(options,'theme')?options.theme:'harbor';validateTheme(theme);
+    let pair=[];
+    if(pairSelection) {
+      if(pairSelection.length>2)throw new Error('Select at most one collection pair.');
+      if(pairSelection.length===1)throw new Error('Select exactly two collection objects.');
+      if(pairSelection.length&&!isPair(pairSelection[0],pairSelection[1],theme))throw new Error('The selected objects do not form a valid pair for your locked theme.');
+      pair=pairSelection;
+    } else {
+      for(let a=0;a<items.length;a++)for(let b=a+1;b<items.length;b++)if(isPair(items[a],items[b],theme)&&(!pair.length||items[a].base+items[b].base>pair[0].base+pair[1].base))pair=[items[a],items[b]];
+    }
+    const bonus=pair.length?Math.min(120,Math.floor((pair[0].base+pair[1].base)/4)):0;
+    return {...ordinary,bonus,recovery:base+bonus,pair:pair.map(item=>item.id)};
+  }
+  function estimateFromEvidence(items,role,targets,theme,context) {
+    const round=context.round||1;
+    const genuineCount=round>=2?items.filter(item=>item.genuine).length:null;
+    const repairCount=round===3?items.filter(canRepair).length:null;
+    const possibilities=items.map((item,index)=>{
+      const known=(round===3&&index===context.publicIndex)||(role==='appraiser'&&targets.includes(index));
+      const candidates=known?[item]:catalogItems(context.rulesVersion??RULES_VERSION).filter(candidate=>candidate.shape===item.shape);
+      return candidates.map(candidate=>({...candidate,id:'estimate-'+index}));
+    });
+    let total=0,count=0;
+    function visit(crate,index) {
+      if(index===possibilities.length) {
+        // This demo draws catalog identities without replacement.
+        if(new Set(crate.map(item=>item.catalogId)).size!==crate.length)return;
+        if(genuineCount!==null&&crate.filter(item=>item.genuine).length!==genuineCount)return;
+        if(repairCount!==null&&crate.filter(canRepair).length!==repairCount)return;
+        total+=salePlan(role,crate,'special',context.cash??STARTING_CASH,{theme}).recovery;count++;return;
+      }
+      for(const item of possibilities[index])visit([...crate,item],index+1);
+    }
+    visit([],0);return count?total/count:0;
+  }
+  function computerBids(items,random,context={}) {
+    const round=context.round||1;
+    const rulesVersion=validateRules(context.rulesVersion??RULES_VERSION);
+    const names=['Marlow','Finch','Vale'],roles=['collector','restorer','appraiser'];
+    return roles.map((role,index)=>{
+      // All draws occur independently of truth and the current human quote.
+      const themeDraw=random(),firstTarget=Math.floor(random()*items.length);
+      const secondTarget=(firstTarget+1+Math.floor(random()*Math.max(1,items.length-1)))%items.length;
+      const risk=random(),theme=role==='collector'?(context.botThemes?.[index]||(themeDraw<.5?'harbor':'railway')):null;
+      const cash=context.botCash?.[index]??STARTING_CASH;
+      const targets=round>=2?[firstTarget,secondTarget]:[firstTarget];
+      let estimate=cash===0?0:estimateFromEvidence(items,role,targets,theme,{...context,round,cash});
+      const previous=context.history?.at(-1);
+      if(previous) {
+        const others=previous.bids.filter(b=>b.id!=='bot-'+index&&b.bid>0),signal=others.length?Math.max(...others.map(b=>b.bid)):0;
+        estimate*=Math.max(.9,Math.min(1.1,1+(signal-estimate)*.12/Math.max(1,estimate)));
+      }
+      const baseFactor=(rulesVersion===1?[0,.48,.62,.72]:[0,.26,.50,.72])[round];
+      const bid=cash===0?0:Math.min(cash,Math.max(1,Math.round(estimate*(baseFactor+risk*.42)/10)*10));
+      return {id:'bot-'+index,name:names[index],role,theme,bid};
+    });
+  }
+  function prepareBidders(game) {game.bots=computerBids(game.items,rng(game.seed^0x4F17C2),{round:game.round,history:game.history,publicIndex:game.publicIndex,botCash:game.botStartingCash,botThemes:game.botThemes,rulesVersion:game.rulesVersion??1});}
+  function newGame(role,seed,theme='harbor',context={}) {
+    validateRole(role);if(!Number.isInteger(seed)||seed<0||seed>0xFFFFFFFF)throw new Error('Choose a valid game seed.');
+    const rulesVersion=validateRules(context.rulesVersion??RULES_VERSION);
+    if(role==='collector')validateTheme(theme);
+    const startingCash=context.startingCash??STARTING_CASH,botStartingCash=context.botCash??[STARTING_CASH,STARTING_CASH,STARTING_CASH];
+    if(!validCash(startingCash)||!Array.isArray(botStartingCash)||botStartingCash.length!==3||!botStartingCash.every(validCash))throw new Error('Available cash must be a nonnegative whole number.');
+    if(context.botThemes&&(!Array.isArray(context.botThemes)||context.botThemes.length!==3||!Object.hasOwn(THEMES,context.botThemes[0])||context.botThemes[1]!==null||context.botThemes[2]!==null))throw new Error('Choose valid locked computer themes.');
+    const random=rng(seed),pool=clone(catalogItems(rulesVersion));
+    for(let i=pool.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
+    const prefix=context.instancePrefix??String(seed>>>0);
+    const items=pool.slice(0,CRATE_SIZE).map((item,index)=>({...item,id:`${prefix}-${index}-${item.catalogId}`}));
+    const priority=['you','bot-0','bot-1','bot-2'],offset=Math.floor(random()*4),order=priority.slice(offset).concat(priority.slice(0,offset));
+    const game={version:4,rulesVersion,seed:seed>>>0,role,theme:role==='collector'?theme:null,startingCash,botStartingCash:[...botStartingCash],botThemes:context.botThemes?clone(context.botThemes):null,phase:'inspect',round:1,items,bots:[],priority:order,publicIndex:Math.floor(random()*CRATE_SIZE),selected:0,inspected:[],history:[],actions:[],bid:null,passed:false,winner:null,mode:null,receipt:null};
+    prepareBidders(game);return game;
+  }
+  function useSkill(game,index) {
+    if(game.phase!=='inspect')throw new Error('Inspection is closed.');
+    if(game.role!=='appraiser')throw new Error('Only the appraiser has a private inspection ability.');
+    if(!Number.isInteger(index)||index<0||index>=game.items.length)throw new Error('Select an object first.');
+    if(game.inspected.includes(index)||(game.round===3&&index===game.publicIndex))return inspect(game.role,game.items,index);
+    if(game.inspected.length>=2)throw new Error('Both inspections have been used.');
+    game.inspected.push(index);game.actions.push({type:'inspect',index});return inspect(game.role,game.items,index);
+  }
+  function openBidding(game) {if(game.phase!=='inspect')throw new Error('Inspection is closed.');game.phase='bid';game.actions.push({type:'open'});}
+  function returnToInspection(game) {
+    if(game.phase!=='bid'||game.actions.at(-1)?.type!=='open')throw new Error('You can return to inspection only before revealing bids.');
+    // Entering the bid form reveals nothing. Undo only that view change, retaining
+    // every inspection, the committed computer quotes, and the round's original funds.
+    game.actions.pop();game.phase='inspect';
+  }
+  function resolveRound(bids,priority,round) {
+    if(![1,2,3].includes(round))throw new Error('Invalid auction round.');
+    const sorted=clone(bids).sort((a,b)=>b.bid-a.bid||priority.indexOf(a.id)-priority.indexOf(b.id)),highest=sorted[0]?.bid||0,second=sorted[1]?.bid||0;
+    const multiplier=[0,1.8,1.3,1][round],required=Math.max(1,Math.ceil(second*[0,18,13,10][round]/10)),hammered=highest>0&&(round===3||highest>=required);
+    return {round,bids:sorted,highest,second,multiplier,required,hammered,winner:hammered?sorted[0].id:null};
+  }
+  function placeBid(game,amount,pass=false) {
+    if(game.phase!=='bid')throw new Error('Bidding is not open.');
+    if(!pass&&(!Number.isSafeInteger(amount)||amount<1||amount>getCash(game)))throw new Error(`Enter a whole-number bid from 1 to ${getCash(game).toLocaleString('en-US')}.`);
+    game.bid=pass?null:amount;game.passed=pass;
+    const bids=[...game.bots,{id:'you',name:'You',role:game.role,theme:game.theme,bid:pass?0:amount}],reveal=resolveRound(bids,game.priority,game.round);
+    game.history.push(reveal);game.actions.push({type:'bid',amount:pass?null:amount,pass});game.winner=reveal.winner;
+    if(!reveal.hammered&&game.round<3)game.phase='round-summary';
+    else {game.phase=game.winner==='you'?'dispose':'result';if(game.winner!=='you')game.receipt={paid:0,sale:0,cost:0,bonus:0,recovery:0,profit:0,cash:getCash(game)};}
+    return reveal;
+  }
+  function nextRound(game) {if(game.phase!=='round-summary'||game.round>=3)throw new Error('The next round is not available.');game.round++;game.phase='inspect';game.bid=null;game.passed=false;prepareBidders(game);game.actions.push({type:'next'});}
+  function settle(game,mode,selection={}) {
+    if(game.phase!=='dispose'||game.winner!=='you')throw new Error('This crate is not awaiting your sale.');
+    const plan=salePlan(game.role,game.items,mode,getCash(game)-game.bid,{...selection,theme:game.theme});
+    game.receipt={...plan,paid:game.bid,profit:plan.recovery-game.bid,cash:getCash(game)-game.bid+plan.recovery};game.mode=mode;game.phase='result';
+    const committed={};if(game.role==='restorer')committed.repairIds=plan.repairs;if(game.role==='collector')committed.pairIds=plan.pair;
+    game.actions.push({type:'sell',mode,selection:committed});return game.receipt;
+  }
+  function standings(game) {
+    if(game.phase!=='result')throw new Error('Finish this auction first.');
+    const rows=[{id:'you',name:'You',role:game.role,theme:game.theme,cash:game.receipt.cash,profit:game.receipt.profit}];
+    for(const [index,bot] of game.bots.entries()) {const cash=game.botStartingCash?.[index]??STARTING_CASH;let profit=0;if(bot.id===game.winner)profit=salePlan(bot.role,game.items,'special',cash-bot.bid,{theme:bot.theme}).recovery-bot.bid;rows.push({...bot,cash:cash+profit,profit});}
+    return rows.sort((a,b)=>b.cash-a.cash);
+  }
+  function restore(raw) {
+    try {
+      if(!raw||raw.version!==4||!Number.isInteger(raw.seed)||!Array.isArray(raw.actions)||raw.actions.length>20)return null;
+      if(raw.role!=='collector'&&raw.theme!==null)return null;
+      const clean=newGame(raw.role,raw.seed,raw.theme,{rulesVersion:savedRules(raw)});
+      for(const action of raw.actions) {
+        if(action.type==='inspect')useSkill(clean,action.index);
+        else if(action.type==='open')openBidding(clean);
+        else if(action.type==='bid')placeBid(clean,action.amount,action.pass===true);
+        else if(action.type==='next')nextRound(clean);
+        else if(action.type==='sell') {
+          if(!action.selection||typeof action.selection!=='object')return null;
+          settle(clean,action.mode,action.selection);
+        } else return null;
+      }
+      clean.selected=Number.isInteger(raw.selected)&&raw.selected>=0&&raw.selected<clean.items.length?raw.selected:0;
+      if(clean.phase!==raw.phase)return null;return clean;
+    } catch {return null;}
+  }
+  function sessionSeed(seed,auctionNumber) {
+    // A crate's contents depend only on its original seed and ordinal, never on wealth or role.
+    if(auctionNumber===1)return seed>>>0;
+    let value=(seed+Math.imul(auctionNumber-1,0x9E3779B9))>>>0;
+    value=Math.imul(value^(value>>>16),0x21F0AAAD);value=Math.imul(value^(value>>>15),0x735A2D97);
+    return (value^(value>>>15))>>>0;
+  }
+  function sessionGame(session) {
+    return newGame(session.role,sessionSeed(session.seed,session.auctionNumber),session.theme,{
+      startingCash:session.cash,
+      botCash:session.players.slice(1).map(player=>player.cash),
+      botThemes:session.players.slice(1).map(player=>player.theme),
+      rulesVersion:session.rulesVersion??1,
+      instancePrefix:`${session.seed}-${session.auctionNumber}-${sessionSeed(session.seed,session.auctionNumber)}`
+    });
+  }
+  function newSession(role,seed,theme='harbor',options={}) {
+    // Validate the original metadata through the same constructor as a single crate.
+    const rulesVersion=validateRules(options.rulesVersion??RULES_VERSION);
+    const first=newGame(role,seed,theme,{rulesVersion});
+    const players=[{id:'you',name:'You',role,theme:first.theme,cash:STARTING_CASH,profit:0},...first.bots.map(bot=>({id:bot.id,name:bot.name,role:bot.role,theme:bot.theme,cash:STARTING_CASH,profit:0}))];
+    const session={version:5,rulesVersion,seed:seed>>>0,role,theme:first.theme,auctionNumber:1,history:[],cash:STARTING_CASH,players,ended:false,actions:[],game:null};
+    session.game=sessionGame(session);return session;
+  }
+  function commitAuction(session) {
+    if(session.game.phase!=='result'||session.history.length===session.auctionNumber)return;
+    if(session.history.length!==session.auctionNumber-1)throw new Error('This auction has already been settled.');
+    const closing=standings(session.game),byId=new Map(closing.map(player=>[player.id,player]));
+    session.players=session.players.map(player=>{const settled=byId.get(player.id);return {...player,cash:settled.cash,profit:settled.cash-STARTING_CASH};});
+    session.cash=session.game.receipt.cash;
+    const winningBid=session.game.winner?session.game.history.at(-1).bids.find(bid=>bid.id===session.game.winner).bid:0;
+    session.history.push({auctionNumber:session.auctionNumber,winner:session.game.winner,paid:winningBid,humanPaid:session.game.receipt.paid,profit:session.game.receipt.profit,cash:session.cash,recovery:session.game.receipt.recovery,players:session.players.map(player=>({...player,auctionProfit:byId.get(player.id).profit}))});
+    if(session.cash===0)session.ended=true;
+  }
+  function plainObject(value) {return value!==null&&typeof value==='object'&&!Array.isArray(value)&&(Object.getPrototypeOf(value)===Object.prototype||Object.getPrototypeOf(value)===null);}
+  function exactKeys(value,keys) {return plainObject(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));}
+  function sessionAction(type,payload) {
+    if(!plainObject(payload))throw new Error('Choose a valid session action.');
+    if(['open','back','next','continue','finish'].includes(type)) {
+      if(!exactKeys(payload,[]))throw new Error('Choose a valid session action.');
+      return {type};
+    }
+    if(type==='inspect') {
+      if(!exactKeys(payload,['index'])||!Number.isInteger(payload.index))throw new Error('Select an object first.');
+      return {type,index:payload.index};
+    }
+    if(type==='bid') {
+      if(!exactKeys(payload,['amount','pass'])||typeof payload.pass!=='boolean'||(payload.pass?payload.amount!==null:!Number.isSafeInteger(payload.amount)))throw new Error('Choose a valid bid action.');
+      return {type,amount:payload.amount,pass:payload.pass};
+    }
+    if(type==='sell') {
+      if(!exactKeys(payload,['mode','selection'])||!['ordinary','special'].includes(payload.mode)||!plainObject(payload.selection))throw new Error('Choose a valid sale action.');
+      const keys=Object.keys(payload.selection);
+      if(keys.some(key=>!['repairIds','pairIds'].includes(key))||keys.some(key=>!Array.isArray(payload.selection[key])||payload.selection[key].some(id=>typeof id!=='string')))throw new Error('Choose valid processing options.');
+      return {type,mode:payload.mode,selection:clone(payload.selection)};
+    }
+    throw new Error('Choose a valid session action.');
+  }
+  function applySessionAction(session,action) {
+    if(session.ended)throw new Error('This auction session has ended.');
+    if(action.type==='inspect') {
+      const previous=session.game.actions.length;useSkill(session.game,action.index);
+      // Rereading a note or the public object changes no state and needs no replay entry.
+      if(session.game.actions.length===previous)return;
+    }
+    else if(action.type==='open')openBidding(session.game);
+    else if(action.type==='back') {
+      if(session.actions.at(-1)?.type!=='open')throw new Error('You can return to inspection only before revealing bids.');
+      returnToInspection(session.game);
+      // Keep canceled form visits out of the durable replay, so opening and
+      // returning cannot consume the run's saved-history allowance.
+      session.actions.pop();return;
+    }
+    else if(action.type==='bid') {placeBid(session.game,action.amount,action.pass);commitAuction(session);}
+    else if(action.type==='next')nextRound(session.game);
+    else if(action.type==='sell') {settle(session.game,action.mode,action.selection);commitAuction(session);}
+    else if(action.type==='continue') {
+      if(session.game.phase!=='result'||session.history.length!==session.auctionNumber)throw new Error('Settle the current crate before continuing.');
+      // Reserve one continuation, up to eleven crate actions, and a final exit.
+      if(session.actions.length+13>MAX_SESSION_ACTIONS)throw new Error('This session has reached its saved history limit. Finish this run to start a new one.');
+      session.auctionNumber++;session.game=sessionGame(session);
+    } else if(action.type==='finish') {
+      if(session.game.phase!=='result'||session.history.length!==session.auctionNumber)throw new Error('Settle the current crate before leaving.');
+      session.ended=true;
+    }
+    session.actions.push(clone(action));
+  }
+  function performSession(session,type,payload={}) {
+    if(!session||session.version!==5)throw new Error('Start a valid auction session.');
+    const action=sessionAction(type,payload),draft=clone(session);
+    applySessionAction(draft,action);
+    // Invalid actions never partially change bids, cash, settlement, or the replay log.
+    Object.assign(session,draft);return session;
+  }
+  function sessionStandings(session) {
+    if(!session||session.version!==5)throw new Error('Start a valid auction session.');
+    return clone(session.players).sort((a,b)=>b.cash-a.cash||['you','bot-0','bot-1','bot-2'].indexOf(a.id)-['you','bot-0','bot-1','bot-2'].indexOf(b.id));
+  }
+  function restoreSession(raw) {
+    try {
+      if(!raw||raw.version!==5||!Array.isArray(raw.actions)||raw.actions.length>MAX_SESSION_ACTIONS||!Number.isInteger(raw.seed))return null;
+      if(raw.role!=='collector'&&raw.theme!==null)return null;
+      const session=newSession(raw.role,raw.seed,raw.theme,{rulesVersion:savedRules(raw)});
+      for(const source of raw.actions) {
+        if(!plainObject(source)||typeof source.type!=='string')return null;
+        const {type,...payload}=source;
+        // Normalize and validate every field, including skipped bid amounts and sale targets.
+        const action=sessionAction(type,payload);applySessionAction(session,action);
+      }
+      const selected=raw.game?.selected;
+      session.game.selected=Number.isInteger(selected)&&selected>=0&&selected<session.game.items.length?selected:0;
+      return session;
+    } catch {return null;}
+  }
+  return {STARTING_CASH,CRATE_SIZE,MAX_SESSION_ACTIONS,RULES_VERSION,ROLES,THEMES,ITEMS,SHAPES,rng,catalogFor,catalogItems,inspect,salePlan,computerBids,newGame,useSkill,openBidding,returnToInspection,resolveRound,placeBid,nextRound,settle,standings,restore,getCash,newSession,performSession,sessionStandings,restoreSession};
+});

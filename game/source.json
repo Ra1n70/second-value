@@ -1,0 +1,26 @@
+{
+  "source": "Ra1n70/second-value",
+  "version": "0.10.0",
+  "files": {
+    "online.html": "ac7e3f3e47cd8982107ba6bb950b1720c2c489fdf97fa725a1ee859bfbf3fa1f",
+    "index.html": "532fee799978a295e5c59a56de1b9b3e12fae98166d37112c88cc8246c8d40ce",
+    "engine.js": "d2ae2d21bcb64c26c0af48d32ce2567a394126ea589284f40454e1650757a5a9",
+    "i18n.js": "e0b0f57a10755d43f4c0cf211e5af9e9604a34582e72b4322b1cdd46006612a9",
+    "art.js": "ecc3cf35d8fe0733820cf0b01b2917b46642bda8d66c61e93ab28d48c68003f2",
+    "app.js": "a42a39ce3f2b3c5ffa81bcd26d65025ca71283ad58b9b2064c77b173b802009d",
+    "online-locale.js": "67f033a613948125a1bd86baf121317c769d224a6f8bfeb484bccf2281fe39b8",
+    "room-transport.js": "77398ee5547b7c87a6291da81b6845b939fa863bed626ae751f6993bcc038bca",
+    "online.js": "b0bf024c05cd002d3e69e6bf418c903bde4ef211ec45cf7cf1f8d5bb80aa550a",
+    "fonts.css": "79ebc6a91d977b50ade44e783d7f76f22f24794eca09854a6b101af32723dce4",
+    "styles.css": "2d0373108239876e07e10d671e9a0cb979f72da5e6b67baa26d15f31890cad7d",
+    "workbench.css": "7bf1671fb7275faa949c73f8046bdb735ba1c755e7ca7016576ac9ead2e911ff",
+    "tabletop.css": "f7bcb6d8ace9eff5448ecb8700a956ef6850fc5a2f241e47069988c6afd463e7",
+    "typography.css": "be53ec97679680deb880158be17e30a629b9fb33e532c4242294624a96f92c72",
+    "online.css": "be2270d365ae0132aaccb05aab4516a891666bfa638b5a12301304ad16679367"
+  },
+  "roomEngineSha256": "19ae08ac9c0bb4337eda043e31f2553636a532f8eaa45368f99e5b40cad7e759",
+  "adaptations": [
+    "Default HTML language is English; Chinese remains available through ?lang=zh-CN.",
+    "The room engine requires the co-located engine.cjs."
+  ]
+}

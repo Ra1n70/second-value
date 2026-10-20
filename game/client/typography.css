@@ -1,0 +1,29 @@
+/* Bookish display type, clear interface text, and locally served font files. */
+:root{
+  --serif:'Noto Serif SC','Songti SC',Georgia,serif;
+  --sans:'Noto Sans SC','Microsoft YaHei UI','Microsoft YaHei',sans-serif;
+}
+body{font-kerning:normal}
+h1,h2,h3,.brand-title{font-weight:600}
+.brand-title{letter-spacing:.06em}
+.seat-name strong,.status-location strong{font-weight:600}
+.seat-status,
+body.tabletop-mode .workbench-grid .object-label,
+body.tabletop-mode .workbench-grid .object-range,
+body.tabletop-mode .detail-badge,
+body.tabletop-mode .detail-facts dd{
+  font-family:var(--sans)!important;
+  font-weight:500;
+}
+.dock-primary .primary,
+.dock-bid .back-button,
+.dock-bid .bid-actions button,
+body.tabletop-mode .phase-controls>button{
+  font-family:var(--sans);
+  font-weight:600;
+}
+.dock-bid .amount-input input[type=number],
+.status-metric strong,.receipt-profit strong,.score-cash{
+  font-variant-numeric:lining-nums tabular-nums;
+}
+html[lang^=zh] .eyebrow{letter-spacing:.06em}

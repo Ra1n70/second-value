@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en" data-default-language="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Second Value: continuous auctions with hidden finds, different talents and a bankroll that carries every decision.">
+  <title>Second Value — Local Demo</title>
+  <link rel="preload" href="assets/fonts/noto-sans-sc-ui-v1.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/fonts/noto-serif-sc-ui-v1.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="fonts.css">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="workbench.css">
+  <link rel="stylesheet" href="tabletop.css">
+  <link rel="stylesheet" href="typography.css">
+  <link rel="stylesheet" href="language-switcher.css">
+  <script defer src="engine.js"></script>
+  <script defer src="locale-es.js"></script>
+  <script defer src="i18n.js"></script>
+  <script defer src="art.js"></script>
+  <script defer src="app.js"></script>
+  <script defer src="language-switcher.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="site-header"><a class="wordmark" href="./" aria-label="Second Value home"><span class="brand-mark" aria-hidden="true">SV</span><span><span class="eyebrow">THE OLD HARBOR AUCTION HOUSE</span><span class="brand-title">Second Value</span></span></a><div class="header-tools"><div class="header-meta"><span class="live-dot" aria-hidden="true"></span> LOCAL PRACTICE <span class="version">DEMO 0.10</span></div><label class="language-picker" data-no-localize><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 6.5h14M5 17.5h14"/></svg><select id="game-language-select" aria-label="Language / 语言 / Idioma"><option value="en" lang="en">English</option><option value="zh-CN" lang="zh-CN">中文</option><option value="es" lang="es">Español</option></select></label><button type="button" id="help-button" class="text-button">How to play</button></div></header>
+    <div class="demo-strip"><span>STEP 10</span> Your clues. Your judgment. Your next move.</div>
+    <main id="game" aria-live="off"></main>
+    <footer class="site-footer"><span>Different eyes. Different value.</span><a href="online.html" id="multiplayer-link">Create or join a multiplayer room →</a></footer>
+  </div>
+  <dialog id="help">
+    <div class="dialog-heading"><span class="eyebrow">THE RULES</span><button type="button" id="close-help" class="text-button">Close</button></div>
+    <h2>Buy with a reason.<br>Know when to walk away.</h2>
+    <ol>
+      <li>Everyone starts a new session with 1,000 virtual coins once. Cash, profits and losses carry between auctions for every player.</li>
+      <li>Each crate contains six objects. Everyone shares ordinary sale prices, fixed before bidding.</li>
+      <li>Your role and collection theme stay locked for the session. Ability uses reset only when a new crate opens.</li>
+      <li>The Appraiser may identify two objects per crate across its three rounds. Known and public information is free to read.</li>
+      <li>The Restorer may choose up to two repairs per crate after winning. Pay fees first; each net gain is capped at 25% of base value and 60 coins.</li>
+      <li>The Collector may deliver one genuine pair per crate with different identities and categories in the locked theme. Bonus is 25% of the pair’s base values, up to 120.</li>
+      <li>Round 1 starts with silhouettes. Round 2 reveals the genuine-object count. Round 3 reveals one object’s full identity and the repairable count.</li>
+      <li>Early sale needs at least 1.8× the runner-up in round 1, or 1.3× in round 2. The highest bid wins round 3.</li>
+      <li>Unsuccessful rounds reveal all bids and charge nothing. You may change or skip each round’s bid, up to your current cash.</li>
+      <li>Before reveal, return to clues or withdraw the bid review to edit your amount. Used inspections stay used. Once revealed, bids and passes are final for that round.</li>
+      <li>Ties follow the priority order shown before bidding.</li>
+      <li>Finish selling the crate before continuing or leaving. All objects are sold; no inventory carries over yet.</li>
+      <li>Leave after any settled auction to finalize cumulative cash and rankings. Leaving grants no refund or extra payout.</li>
+    </ol>
+    <p>Only the final buyer pays once. Computer quotes are fixed before your current bid and never exceed that computer’s own cash.</p>
+    <p>Solo practice uses computer bidders. Trading, item storage and a timer are not included.</p>
+    <p>Refreshing restores your session when browser storage is available.</p>
+  </dialog>
+  <dialog id="action-review" class="action-review" aria-labelledby="review-title" aria-describedby="review-description">
+    <button type="button" id="close-review" class="text-button review-close" aria-label="Close">×</button>
+    <div id="review-body"></div>
+  </dialog>
+  <noscript>This demo needs JavaScript enabled.</noscript>
+</body>
+</html>
