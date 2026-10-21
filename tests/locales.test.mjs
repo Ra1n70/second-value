@@ -317,6 +317,8 @@ test('Spanish dictionaries cover every existing base, item and multiplayer exact
 const baseDynamic = [
   'Auction 2', 'AUCTION 2 · UNCLAIMED PROPERTY', 'Session ledger · 3 crates', '3 crates settled.',
   'Your bid limit: 1,234.', 'Enter a whole-number bid from 1 to 1,234.',
+  'Enter a whole-number bid from 88 to 1,234.',
+  'You need at least 88 to bid on this crate. Pass this round.',
   'Marlow bought the crate. Your cash is unchanged.', 'ROUND 2 / 3', 'ROUND 2 / 3 · BIDS REVEALED',
   'Early hammer: the highest bid must reach 1.8× the runner-up. Otherwise, another round opens.',
   'The manifest confirms 4 genuine objects. Their identities are still hidden.', 'Confirmed genuine objects: 4 / 6.',
@@ -350,6 +352,9 @@ const onlineDynamic = [
   'Object C', 'Inspect object D', 'Round 2', 'Genuine objects: 4 / 6.', 'Repairable objects: 3.',
   'Leading bid: 1,000.', 'Runner-up: 900.', 'Required for early sale: 1,620.',
   'Repair fee 50 · sale 500 · gain +60', 'Enter a whole-number bid from 1 to 1000, or pass.',
+  'Enter a whole-number bid from 88 to 1000, or pass.',
+  'Enter a whole-number bid from 1,080 to 2,000, or pass.',
+  'You need at least 88 to bid on this crate. Pass this round.',
   'Copy this room code: ABCD12',
 ];
 
@@ -435,4 +440,35 @@ test('new role controls and processing validation switch in place without losing
     assert.equal(user.textContent, 'Broker');
   }
   assert.deepEqual(h.navigation, []);
+});
+
+test('reserve labels, rules and validation switch in place in solo and multiplayer', async () => {
+  const sources = [
+    'Auction-house reserve', 'Minimum bid · fixed for this crate',
+    'A winning bid must meet the reserve. This amount stays fixed for all three rounds.',
+    'Your cash is below the reserve. You can pass this round.',
+    'No bid met the reserve. Nobody pays.',
+    'New sessions: The auction house publishes a reserve before bidding, around 10% of the crate’s ordinary sale value (8–12%). Role abilities do not affect it. It stays fixed for all three rounds; even a sole bid must meet it. If the crate goes unsold, nobody pays.',
+    'Choose a valid reserve price.',
+    'Enter a whole-number bid from 88 to 1,000.',
+    'Enter a whole-number bid from 88 to 1000, or pass.',
+    'You need at least 88 to bid on this crate. Pass this round.',
+  ];
+  for (const online of [false, true]) {
+    const h = await localeHarness({ online });
+    const labels = sources.map(source => h.main.append(new Element('p', {}, source)));
+    for (const language of ['zh-CN', 'es', 'en', 'zh-CN', 'en']) {
+      h.base.setLanguage(language);
+      h.locale.localize(h.main);
+      labels.forEach((label, index) => {
+        const source = sources[index];
+        assert.equal(label.textContent, h.locale.translate(source), `${online}: ${language}: ${source}`);
+        if (language !== 'en') assert.notEqual(label.textContent, source, source);
+        assert.doesNotMatch(label.textContent, /undefined|NaN/, source);
+        if (language === 'es') assert.doesNotMatch(label.textContent, /[\u3400-\u9fff]/, source);
+        assertNumbersPreserved(source, label.textContent);
+      });
+    }
+    assert.deepEqual(h.navigation, []);
+  }
 });

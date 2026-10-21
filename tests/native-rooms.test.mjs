@@ -144,11 +144,12 @@ test('new role choices and fees survive a simultaneous D1 sale replay without le
     record.state.items = catalogIds.map((catalogId, slot) => ({...E.catalogItems(3).find(item => item.catalogId === catalogId), id: `lot-${slot}`}));
     await api.db.prepare('UPDATE auction_rooms SET record_json = ? WHERE code = ?').bind(JSON.stringify(record), host.roomCode).run();
     noSecrets(await api.view(host), [host, guest]);
-    await api.command(host, {type: 'bid', amount: 1, pass: false});
+    await api.command(host, {type: 'bid', amount: (await api.view(host)).reservePrice, pass: false});
     await api.command(guest, {type: 'bid', amount: null, pass: true});
     const opened = await api.view(host);
-    assert.equal(opened.rulesVersion, 3);
-    const expected = E.salePlan(role, opened.lots, 'special', 999, {abilityIds: slots.map(slot => opened.lots[slot].id)});
+    assert.equal(opened.rulesVersion, 4);
+    const remainingCash = 1000 - opened.winningBid;
+    const expected = E.salePlan(role, opened.lots, 'special', remainingCash, {abilityIds: slots.map(slot => opened.lots[slot].id)});
     const saleCommand = {type: 'sell', turnId: opened.turnId, mode: 'special', repairSlots: [], pairSlots: [], abilitySlots: slots};
     const id = requestId();
     const results = await api.race(host.roomCode, [() => api.action(host, saleCommand, id), () => api.action(host, saleCommand, id)]);
@@ -156,7 +157,7 @@ test('new role choices and fees survive a simultaneous D1 sale replay without le
     await api.reopen();
     const after = await api.view(host);
     assert.equal(after.phase, 'result');
-    assert.equal(after.self.cash, 999 + expected.recovery);
+    assert.equal(after.self.cash, remainingCash + expected.recovery);
     assert.equal(after.receipt.cost, expected.cost);
     assert.equal(after.receipt.bonus, expected.bonus);
     assert.deepEqual(after.receipt.ability, slots);
@@ -165,6 +166,30 @@ test('new role choices and fees survive a simultaneous D1 sale replay without le
     assert.equal((await api.view(host)).self.cash, after.self.cash);
     assert.equal((await api.view(guest)).self.cash, 1000);
   }
+});
+
+test('D1 keeps a public fixed reserve across restarts and rejects low bids without mutation', async t => {
+  const api = await harness(t);
+  const [host, guest] = await api.begin();
+  const before = await api.view(host), reserve = before.reservePrice;
+  assert.ok(Number.isSafeInteger(reserve) && reserve > 1);
+  assert.equal((await api.view(guest)).reservePrice, reserve);
+  noSecrets(before, [host, guest]);
+  englishError(await api.command(host, {type: 'bid', amount: reserve - 1, pass: false}), 409);
+  assert.deepEqual(await api.view(host), before);
+  await api.reopen();
+  assert.deepEqual(await api.view(host), before);
+  for (let round = 1; round <= 3; round++) {
+    assert.equal((await api.view(host)).reservePrice, reserve);
+    for (const member of [host, guest]) assert.equal((await api.command(member, {type: 'bid', amount: null, pass: true})).status, 200);
+    if (round < 3) await api.command(host, {type: 'next'});
+    await api.reopen();
+  }
+  const unsold = await api.view(host);
+  assert.equal(unsold.phase, 'result');
+  assert.equal(unsold.winnerId, null);
+  assert.equal(unsold.ledger[0].paid, 0);
+  assert.ok(unsold.players.every(player => player.cash === 1000));
 });
 
 test('native D1 persists credentials, private notes and a sealed bid across completely reopened handlers', async t => {
@@ -216,10 +241,10 @@ test('two simultaneous final bids survive a stale D1 CAS and reveal/debit exactl
 test('same-ID concurrent sell and a lost sale response credit one receipt and ledger across restart', async t => {
   const api = await harness(t);
   const [host, guest] = await api.begin();
-  await api.command(host, { type: 'bid', amount: 1, pass: false });
+  await api.command(host, { type: 'bid', amount: (await api.view(host)).reservePrice, pass: false });
   await api.command(guest, { type: 'bid', amount: null, pass: true });
   const opened = await api.view(host);
-  const expectedCash = 999 + opened.lots.reduce((sum, lot) => sum + lot.base, 0);
+  const expectedCash = 1000 - opened.winningBid + opened.lots.reduce((sum, lot) => sum + lot.base, 0);
   const command = { type: 'sell', turnId: opened.turnId, mode: 'ordinary', repairSlots: [], pairSlots: [] };
   const id = requestId();
   const results = await api.race(host.roomCode, [() => api.action(host, command, id), () => api.action(host, command, id)]);
@@ -319,7 +344,7 @@ test('stale commands and reused IDs cannot change a later phase; continuing pres
   const oldTurn = (await api.view(host)).turnId;
   const inspected = { type: 'inspect', slot: 0, turnId: oldTurn }, id = requestId();
   await api.action(host, inspected, id);
-  await api.command(host, { type: 'bid', amount: 1, pass: false });
+  await api.command(host, { type: 'bid', amount: (await api.view(host)).reservePrice, pass: false });
   await api.command(guest, { type: 'bid', amount: null, pass: true });
   const opened = await api.view(host);
   englishError(await api.action(host, { type: 'withdraw', turnId: oldTurn }), 409);

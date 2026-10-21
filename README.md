@@ -7,7 +7,8 @@ The complete game runs at [second-value.abloompixie66.chatgpt.site](https://seco
 - Players join with a nickname and room code; no account or ChatGPT sign-in is required.
 - New sessions offer six roles: Restorer, Appraiser, Collector, Salvager, Curator and Antique Dealer. Everyone shares the same bidding actions; each role has one exclusive ability. The catalog now has 24 identities behind six public outlines.
 - Ordinary prices are fixed when a crate is drawn. Salvage, exhibitions and customer sales require explicit target choices, have fees and capped payouts, and show their net difference from ordinary sale before confirmation. Ordinary sale is always available.
-- Rules are locked to the session or room. Existing rules 1/2 saves and rules 2 rooms retain their catalog and economics; start a new table to use the expanded roster.
+- New rules 4 crates have a public auction-house reserve of 8–12% of their ordinary sale value, rounded to whole currency. It is drawn once, stays fixed across all three rounds and excludes role bonuses. Every winning bid, including a sole bidder, must meet it. A player below the reserve may pass; an unsold crate charges nobody.
+- Rules are locked to the session or room. Existing rules 1/2/3 saves and rooms retain their catalog and economics; start a new table to use the reserve.
 - Room state, hashed seat credentials, action replay records and presence live in D1. The same tab can restore its seat after a Worker restart or deployment while the room has not expired.
 - Rooms expire after six hours without authenticated activity. This is session recovery, not a permanent account/history feature.
 - Concurrent requests commit by database storage version. Retried request IDs cannot debit or credit a successful bid or sale twice. Clients receive only their private `viewFor()` projection.

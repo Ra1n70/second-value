@@ -323,7 +323,7 @@
         [/^Required for early sale: ([\d,]+)\.$/, (_, n) => `提前成交所需报价：${n}。`],
         [/^Repair fee ([\d,]+) · sale ([\d,]+) · gain \+([\d,]+)$/, (_, fee, sale, gain) => `修复费 ${fee} · 售价 ${sale} · 净增值 +${gain}`],
         [/^Copy this room code: ([A-Z0-9]{6})$/, (_, code) => `复制这个房间码：${code}`],
-        [/^Enter a whole-number bid from 1 to (\d+), or pass\.$/, (_, n) => `请输入 1–${n} 之间的整数报价，或跳过本轮。`]
+        [/^Enter a whole-number bid from ([\d,]+) to ([\d,]+), or pass\.$/, (_, minimum, cash) => `请输入 ${minimum}–${cash} 之间的整数报价，或跳过本轮。`]
       ] : [
         [/^Auction (\d+)$/, (_, n) => `Subasta ${n}`],
         [/^Round (\d+) \/ 3$/, (_, n) => `Ronda ${n} / 3`],
@@ -344,7 +344,7 @@
         [/^Required for early sale: ([\d,]+)\.$/, (_, n) => `Necesario para la venta anticipada: ${n}.`],
         [/^Repair fee ([\d,]+) · sale ([\d,]+) · gain \+([\d,]+)$/, (_, fee, sale, gain) => `Reparación ${fee} · venta ${sale} · ganancia +${gain}`],
         [/^Copy this room code: ([A-Z0-9]{6})$/, (_, code) => `Copia este código de sala: ${code}`],
-        [/^Enter a whole-number bid from 1 to (\d+), or pass\.$/, (_, n) => `Introduce una puja entera entre 1 y ${n}, o pasa.`]
+        [/^Enter a whole-number bid from ([\d,]+) to ([\d,]+), or pass\.$/, (_, minimum, cash) => `Introduce una puja entera entre ${minimum} y ${cash}, o pasa.`]
       ];
       for (const [pattern, replacement] of patterns) if (pattern.test(core)) { translated = core.replace(pattern, replacement); break; }
     }

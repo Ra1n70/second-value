@@ -2,6 +2,13 @@
 (() => {
   'use strict';
   const baseWords = {
+    'Auction-house reserve':'Precio de reserva de la casa de subastas',
+    'Minimum bid · fixed for this crate':'Puja mínima · fija para este lote',
+    'A winning bid must meet the reserve. This amount stays fixed for all three rounds.':'La puja ganadora debe alcanzar el precio de reserva. Este importe no cambia durante las tres rondas.',
+    'Your cash is below the reserve. You can pass this round.':'Tu saldo no alcanza el precio de reserva. Puedes pasar esta ronda.',
+    'No bid met the reserve. Nobody pays.':'Ninguna puja alcanzó el precio de reserva. Nadie paga.',
+    'New sessions: The auction house publishes a reserve before bidding, around 10% of the crate’s ordinary sale value (8–12%). Role abilities do not affect it. It stays fixed for all three rounds; even a sole bid must meet it. If the crate goes unsold, nobody pays.':'Sesiones nuevas: La casa de subastas publica antes de las pujas un precio de reserva de alrededor del 10 % del valor de venta normal del lote (8–12 %). Las habilidades no lo modifican. No cambia durante las tres rondas; incluso una única puja debe alcanzarlo. Si el lote no se vende, nadie paga.',
+    'Choose a valid reserve price.':'Elige un precio de reserva válido.',
     'The Salvager':'Recuperador', 'Salvager':'Recuperador', 'THE SALVAGER':'RECUPERADOR',
     'The Curator':'Curador', 'Curator':'Curador', 'THE CURATOR':'CURADOR',
     'Antique Dealer':'Anticuario', 'Dealer':'Anticuario', 'ANTIQUE DEALER':'ANTICUARIO', 'DEALER':'ANTICUARIO',
@@ -409,7 +416,9 @@
     [/^Session ledger · (\d+) crates?$/,(_,n)=>'Registro de sesión · '+n+' '+(n==='1'?'lote':'lotes')],
     [/^(\d+) crates? settled\.$/,(_,n)=>n+' '+(n==='1'?'lote liquidado.':'lotes liquidados.')],
     [/^Your bid limit: ([\d,]+)\.$/,(_,cash)=>'Tu límite de puja: '+cash+'.'],
-    [/^Enter a whole-number bid from 1 to ([\d,]+)\.$/,(_,cash)=>Number(cash.replace(/,/g,''))===0?'No tienes saldo para pujar. Pasa esta ronda.':'Introduce una puja entera de 1 a '+cash+'.'],
+    [/^Enter a whole-number bid from ([\d,]+) to ([\d,]+)\.$/,(_,minimum,cash)=>Number(cash.replace(/,/g,''))===0?'No tienes saldo para pujar. Pasa esta ronda.':'Introduce una puja entera de '+minimum+' a '+cash+'.'],
+    [/^Enter a whole-number bid from ([\d,]+) to ([\d,]+), or pass\.$/,(_,minimum,cash)=>'Introduce una puja entera de '+minimum+' a '+cash+', o pasa.'],
+    [/^You need at least ([\d,]+) to bid on this crate\. Pass this round\.$/,(_,minimum)=>'Necesitas al menos '+minimum+' para pujar por este lote. Pasa esta ronda.'],
     [/^(.+) bought the crate\. Your cash is unchanged\.$/,(_,name)=>word(name)+' compró el lote. Tu saldo no cambia.'],
     [/^ROUND (\d) \/ 3$/,(_,n)=>'RONDA '+n+' / 3'],
     [/^ROUND (\d) \/ 3 · BIDS REVEALED$/,(_,n)=>'RONDA '+n+' / 3 · PUJAS REVELADAS'],

@@ -14,12 +14,13 @@ const item = id => clone(E.ITEMS.find(candidate => candidate.catalogId === id));
 const total = items => items.reduce((sum, candidate) => sum + candidate.base, 0);
 const plan = (role, items, ids, cash = 1000) => E.salePlan(role, items, 'special', cash, { abilityIds: ids });
 
-test('rules 3 expands the catalog and roles while prior silhouette ranges stay locked', () => {
-  assert.equal(E.RULES_VERSION, 3);
+test('current rules retain the expanded catalog and roles while prior silhouette ranges stay locked', () => {
+  assert.equal(E.RULES_VERSION, 4);
   assert.equal(roles.length, 6);
   assert.equal(E.catalogItems(1).length, 18);
   assert.equal(E.catalogItems(2).length, 18);
   assert.equal(E.catalogItems(3).length, 24);
+  assert.equal(E.catalogItems(4).length, 24);
   assert.equal(E.catalogItems(1).find(candidate => candidate.catalogId === 'tea-cup').theme, null);
   assert.equal(E.catalogItems(2).find(candidate => candidate.catalogId === 'tea-cup').theme, 'railway');
   assert.equal(E.catalogFor('radio', 2).max, 160);
@@ -32,8 +33,9 @@ test('original revisions retain exact seeded draws and all three rounds of compu
   const expected = {
     1: 'd04c9e9d87784b919493dc3d80289bb26fa2ed9ec696f1c2511f566a6e246347',
     2: '53f26fcc77bca6776728e30752872ff8358d139452a3ff54a14ca94cf6ed3daa',
+    3: '084eef706e71d76163e55cffd4a105633efdd8de7843458338276ce9603f4fa2',
   };
-  for (const revision of [1, 2]) {
+  for (const revision of [1, 2, 3]) {
     const signature = JSON.stringify([1, 7, 42, 530, 20261020, 4294967295].map(seed => {
       const game = E.newGame('appraiser', seed, 'harbor', { rulesVersion: revision });
       return {

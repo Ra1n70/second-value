@@ -72,7 +72,10 @@ try {
   await command(guest, 'ready', {ready: true});
   const started = (await command(host, 'start')).view;
   check(started.phase === 'auction' && started.lots.length === 6, 'Auction did not start with six objects');
-  stages.push('Ready both and start');
+  const reserve = started.reservePrice;
+  check(started.rulesVersion >= 4 && Number.isSafeInteger(reserve) && reserve > 1, 'Public auction reserve missing');
+  check(reserve === (await view(guest, 'guest-reserve')).reservePrice, 'Reserve differs between seats');
+  stages.push('Ready both and start with a shared public reserve');
   await command(host, 'inspect', {slot: 0});
   const hostPrivate = await view(host, 'host-private-view');
   const guestPrivate = await view(guest, 'guest-private-view');
@@ -86,17 +89,25 @@ try {
   await command(host, 'withdraw');
   check((await view(host, 'verify-withdraw')).self.bid === null, 'Withdrawal failed');
   stages.push('Bid 200, verify privacy, withdraw');
-  await command(host, 'bid', {amount: 1, pass: false});
+  await send('reject-below-reserve', `/api/rooms/${host.roomCode}/actions`, {
+    method: 'POST', member: host, expected: 409,
+    body: {requestId: crypto.randomUUID(), command: {type: 'bid', turnId: guestPending.turnId, amount: reserve - 1, pass: false}}
+  });
+  const rejected = await view(host, 'verify-rejected-bid');
+  check(rejected.self.bid === null && rejected.self.cash === 1000 && rejected.phase === 'auction', 'Rejected bid changed state');
+  stages.push('Server rejects below-reserve bid without changing money or commitment');
+  await command(host, 'bid', {amount: reserve, pass: false});
   await command(guest, 'bid', {amount: null, pass: true});
   const opened = await view(host, 'verify-reveal');
-  check(opened.phase === 'dispose' && opened.winnerId === host.playerId && opened.winningBid === 1, 'First-round hammer mismatch');
-  check(opened.self.cash === 999 && opened.lots.every(lot => lot.known), 'Reveal/cash invariant failed');
-  stages.push('Resubmit 1, guest passes, reveal crate; winner cash 999');
+  check(opened.phase === 'dispose' && opened.winnerId === host.playerId && opened.winningBid === reserve, 'First-round hammer mismatch');
+  check(opened.self.cash === 1000 - reserve && opened.lots.every(lot => lot.known), 'Reveal/cash invariant failed');
+  stages.push('Bid exactly the reserve, guest passes, reveal crate; charge reserve once');
   const proceeds = opened.lots.reduce((sum, lot) => sum + lot.base, 0);
   const settled = (await command(host, 'sell', {mode: 'ordinary', repairSlots: [], pairSlots: []})).view;
-  const expectedCash = 999 + proceeds;
+  check(reserve >= Math.round(proceeds * .08) && reserve <= Math.round(proceeds * .12), 'Reserve outside ordinary-value bounds');
+  const expectedCash = 1000 - reserve + proceeds;
   check(settled.phase === 'result' && settled.self.cash === expectedCash && settled.ledger.length === 1, 'Initial settlement invariant failed');
-  check(settled.receipt.recovery === proceeds && settled.receipt.paid === 1, 'Settlement receipt mismatch');
+  check(settled.receipt.recovery === proceeds && settled.receipt.paid === reserve, 'Settlement receipt mismatch');
   for (let index = 0; index < 2; index++) {
     const hostAgain = await view(host, `host-settlement-read-${index + 1}`);
     const guestAgain = await view(guest, `guest-settlement-read-${index + 1}`);
@@ -110,7 +121,7 @@ try {
   console.log(JSON.stringify({
     result: 'PASS', evidence: 'Native Sites HTTP API with D1; not browser or physical-device evidence',
     roomsCreated: 1, mutationRetries: 0, stages,
-    cash: {initialPerPlayer: 1000, winningBid: 1, winnerBeforeSale: 999, ordinarySaleProceeds: proceeds, winnerAfterSale: expectedCash, guestAfterSale: 1000, ledgerEntries: 1},
+    cash: {initialPerPlayer: 1000, reservePrice: reserve, winningBid: reserve, winnerBeforeSale: 1000 - reserve, ordinarySaleProceeds: proceeds, winnerAfterSale: expectedCash, guestAfterSale: 1000, ledgerEntries: 1},
     limitation: 'Real cold-start behavior and clipboard/browser interaction not verified'
   }, null, 2));
 } catch (error) {

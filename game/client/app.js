@@ -8,6 +8,8 @@
   const money = value => value.toLocaleString('en-US');
   const signed = value => (value > 0 ? '+' : value < 0 ? '−' : '') + money(Math.abs(value));
   const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  const minimumBid = () => Math.max(1,game?.reservePrice || 0);
+  const defaultBid = () => String(Math.max(minimumBid(),Math.min(300,E.getCash(game))));
   let selectedRole = 'restorer';
   let selectedTheme = 'harbor';
   let session = null;
@@ -27,7 +29,7 @@
     session = E.restoreSession(saved && saved.session);
     game = session && session.game;
     upgraded = Boolean(saved && (saved.game || saved.session) && !session);
-    if(game) draftBid = typeof saved.draftBid==='string'?saved.draftBid:String(Math.min(300,E.getCash(game)));
+    if(game) draftBid = typeof saved.draftBid==='string'?saved.draftBid:defaultBid();
     if(game && game.phase==='dispose' && saved.saleDraft) {
       saleMode = saved.saleDraft.mode==='ordinary'?'ordinary':'special';
       repairIds = Array.isArray(saved.saleDraft.repairIds)?saved.saleDraft.repairIds.filter(id=>game.items.some(item=>item.id===id)):[];
@@ -46,7 +48,7 @@
     session = E.newSession(selectedRole,seed,selectedTheme);game=session.game;resetDraft();upgraded=false;save();render();
   }
   function resetDraft() {
-    saleMode=game.role==='appraiser'?'ordinary':'special';repairIds=[];pairIds=[];abilityIds=[];draftBid=String(Math.min(300,E.getCash(game)));
+    saleMode=game.role==='appraiser'?'ordinary':'special';repairIds=[];pairIds=[];abilityIds=[];draftBid=defaultBid();
   }
   function act(type,payload={}) {
     E.performSession(session,type,payload);game=session.game;
@@ -104,6 +106,11 @@
   function nextCluePreview() {
     return game.round===1?'If no sale: next round reveals the genuine count.':game.round===2?'If no sale: next round reveals one identity and the repairable count.':'Final round: the highest bid wins. Ties follow the published priority.';
   }
+  function reserveNotice() {
+    if(!game.reservePrice)return '';
+    const unable=E.getCash(game)<minimumBid();
+    return `<section class="auction-reserve ${unable?'is-unaffordable':''}" aria-label="Auction-house reserve"><div class="reserve-amount"><span>Auction-house reserve</span><strong>${money(game.reservePrice)}</strong></div><div class="reserve-copy"><span>Minimum bid · fixed for this crate</span><small>${unable?'Your cash is below the reserve. You can pass this round.':'A winning bid must meet the reserve. This amount stays fixed for all three rounds.'}</small></div></section>`;
+  }
   function historyMarkup() {
     if(!game.history.length)return '';
     const ids=['you',...game.bots.map(b=>b.id)];
@@ -113,8 +120,8 @@
     const last=game.history.at(-1);
     const leader=last.bids[0];
     return `<div class="workbench-head"><div><span class="eyebrow">ROUND ${game.round} / 3 · BIDS REVEALED</span><h2 class="lot-title">No hammer. Not yet.</h2></div></div>
-      <div class="auction-layout phase-layout"><section><p class="muted">This round did not sell. Everyone’s cash is unchanged.</p>${historyMarkup()}
-      <div class="round-readout"><span class="eyebrow">WHY THE AUCTION CONTINUES</span><p>${last.highest?`Leading bid: ${bidderName(leader.id)} at ${money(last.highest)}.`:'No offers were made in this round.'}</p><p>Runner-up bid: ${money(last.second)}.</p><p>Early sale required a leading bid of at least ${money(last.required)}.</p></div></section>
+      ${reserveNotice()}<div class="auction-layout phase-layout"><section><p class="muted">This round did not sell. Everyone’s cash is unchanged.</p>${historyMarkup()}
+      <div class="round-readout"><span class="eyebrow">WHY THE AUCTION CONTINUES</span><p>${last.highest?`Leading bid: ${bidderName(leader.id)} at ${money(last.highest)}.`:'No offers were made in this round.'}</p><p>Runner-up bid: ${money(last.second)}.</p><p>${last.reservePrice&&last.highest<last.reservePrice?'No bid met the reserve. Nobody pays.':`Early sale required a leading bid of at least ${money(last.required)}.`}</p></div></section>
       <aside class="side-panel stage-controls phase-controls"><div class="stage-heading"><span class="eyebrow">NEXT ROUND</span><h3>Next move</h3></div><p>${game.round===1?'Next: the manifest reveals how many objects are genuine.':'Next: one object’s identity and base price will be revealed.'}</p><button type="button" class="primary full" id="next-round">Open round ${game.round+1} →</button><div class="stage-support"><p>Previous bids are not charges or minimums. You may raise, lower, or skip your next bid.</p><p>${abilityStatus()}</p><p class="priority">${game.round===1?'Next-round early hammer: 1.3× the runner-up.':'Next round is final: highest bid wins.'}</p></div></aside></div>`;
   }
   function bidderName(id) { return id==='you'?'You':game.bots.find(bot=>bot.id===id).name; }
@@ -167,18 +174,18 @@
     const role=E.ROLES[game.role],known=informationFor(game.selected).known;
     const exhausted=game.inspected.length>=2;
     const skillPanel=game.role==='appraiser'?`<button type="button" class="skill-button" id="use-skill" ${known||exhausted?'disabled':''}><span>${known?'Information already confirmed':role.skill}</span><span>${2-game.inspected.length} / 2 uses left</span></button><p class="skill-result" id="skill-result" aria-live="polite">${known?'Read this object’s confirmed details above.':exhausted?'No private note for this object. Both inspection uses are spent.':'Choose an object, then authenticate it. Two uses for this entire crate.'}</p>`:`<strong>${role.skill}</strong><p class="role-tool">${abilityStatus()}</p>`;
-    return `<section class="action-dock dock-inspect" aria-label="Your auction controls"><div class="dock-context"><span class="eyebrow">YOUR AUCTION DESK</span><strong>Target: object ${String.fromCharCode(65+game.selected)}</strong><span class="small muted">Bids stay sealed until you confirm.</span></div><div class="dock-skill">${skillPanel}</div><div class="dock-primary"><button type="button" class="primary" id="open-bidding">Prepare a bid →</button><small>Opening the bid form submits nothing. You can come back.</small></div></section>`;
+    return `<section class="action-dock dock-inspect" aria-label="Your auction controls"><div class="dock-context"><span class="eyebrow">YOUR AUCTION DESK</span><strong>Target: object ${String.fromCharCode(65+game.selected)}</strong><span class="small muted">Bids stay sealed until you confirm.</span></div><div class="dock-skill">${skillPanel}</div><div class="dock-primary">${E.getCash(game)<minimumBid()?'<button type="button" class="primary" id="pass-bid">Pass this round</button>':'<button type="button" class="primary" id="open-bidding">Prepare a bid →</button>'}<small>${game.reservePrice&&E.getCash(game)<minimumBid()?'Your cash is below the reserve. You can pass this round.':'Opening the bid form submits nothing. You can come back.'}</small></div></section>`;
   }
   function inspection() {
     return `<div class="workbench-head"><div class="lot-heading"><div><h2 class="lot-title">The auction table</h2><span class="round-preview">${nextCluePreview()}</span></div></div><details class="round-rules"><summary>Round rules</summary><div class="round-rules-content"><p>${roundRule()}</p><p>Tie priority</p><p>${game.priority.map(bidderName).join(' → ')}</p></div></details></div>
-      <div class="workbench-grid"><section class="auction-table-column"><div class="crate"><div class="crate-top"><span>One crate / six objects</span><span>Choose an object to see its details.</span></div><div class="objects">${objectCards()}</div><a class="mobile-detail-link" href="#selected-object">Selected object details ↓</a></div>
+      ${reserveNotice()}<div class="workbench-grid"><section class="auction-table-column"><div class="crate"><div class="crate-top"><span>One crate / six objects</span><span>Choose an object to see its details.</span></div><div class="objects">${objectCards()}</div><a class="mobile-detail-link" href="#selected-object">Selected object details ↓</a></div>
       </section><aside class="workbench-sidebar">${objectDetail()}</aside></div>${actionDock()}
-      <div class="table-reference"><details class="known-register"><summary>Confirmed notes</summary>${confirmedNotes()}</details>${game.history.length?`<details class="previous-bids"><summary>Previous round bids</summary>${historyMarkup()}</details>`:''}${catalog()}${participants()}<details class="role-reference"><summary>Your role ability</summary><p>${E.ROLES[game.role].passive}</p></details>${session.rulesVersion===1?'<details class="rules-reference"><summary>Saved session rules</summary><p>This saved session keeps its original rules. New sessions use the updated balance.</p></details>':''}</div>`;
+      <div class="table-reference"><details class="known-register"><summary>Confirmed notes</summary>${confirmedNotes()}</details>${game.history.length?`<details class="previous-bids"><summary>Previous round bids</summary>${historyMarkup()}</details>`:''}${catalog()}${participants()}<details class="role-reference"><summary>Your role ability</summary><p>${E.ROLES[game.role].passive}</p></details>${session.rulesVersion<4?'<details class="rules-reference"><summary>Saved session rules</summary><p>This saved session keeps its original rules. New sessions use the updated balance.</p></details>':''}</div>`;
   }
   function bidControls() {
-    const cash=E.getCash(game),maximum=Math.max(1,cash);
-    const amount=Number(draftBid),valid=Number.isSafeInteger(amount)&&amount>=1&&amount<=cash;
-    return `<button type="button" class="back-button" id="back-to-clues">← Return to clues</button><form id="bid-form" novalidate><div class="bid-editor"><label for="bid-input"><span>Your sealed bid</span><span>Whole crate</span></label><div class="amount-input"><button type="button" id="bid-decrease" aria-label="Decrease bid by 25" ${cash<1?'disabled':''}>−</button><input id="bid-input" type="number" min="1" max="${maximum}" step="1" inputmode="numeric" value="${escape(draftBid)}" ${cash<1?'disabled':''} aria-describedby="bid-limit bid-error"><button type="button" id="bid-increase" aria-label="Increase bid by 25" ${cash<1?'disabled':''}>+</button></div><input id="bid-range" type="range" min="1" max="${maximum}" step="1" value="${Math.max(1,Math.min(maximum,amount||300))}" ${cash<1?'disabled':''} aria-label="Adjust bid"></div><div class="dock-balance"><span>Cash after purchase</span><strong id="bid-balance">${valid?money(cash-amount):'—'}</strong><small>Before sale proceeds and ability costs.</small><small id="bid-limit">Your bid limit: ${money(cash)}.</small></div><div class="bid-actions"><button type="button" id="pass-bid">Pass this round</button><button type="submit" class="primary" ${cash<1?'disabled':''}>Review bid →</button></div><div id="bid-error" class="error" role="alert"></div></form>`;
+    const cash=E.getCash(game),minimum=minimumBid(),maximum=Math.max(minimum,cash),unable=cash<minimum;
+    const amount=Number(draftBid),valid=Number.isSafeInteger(amount)&&amount>=minimum&&amount<=cash;
+    return `<button type="button" class="back-button" id="back-to-clues">← Return to clues</button><form id="bid-form" novalidate><div class="bid-editor"><label for="bid-input"><span>Your sealed bid</span><span>Whole crate</span></label><div class="amount-input"><button type="button" id="bid-decrease" aria-label="Decrease bid by 25" ${unable?'disabled':''}>−</button><input id="bid-input" type="number" min="${minimum}" max="${maximum}" step="1" inputmode="numeric" value="${escape(draftBid)}" ${unable?'disabled':''} aria-describedby="bid-limit bid-error"><button type="button" id="bid-increase" aria-label="Increase bid by 25" ${unable?'disabled':''}>+</button></div><input id="bid-range" type="range" min="${minimum}" max="${maximum}" step="1" value="${Math.max(minimum,Math.min(maximum,amount||minimum))}" ${unable?'disabled':''} aria-label="Adjust bid"></div><div class="dock-balance"><span>Cash after purchase</span><strong id="bid-balance">${valid?money(cash-amount):'—'}</strong><small>Before sale proceeds and ability costs.</small><small id="bid-limit">Your bid limit: ${money(cash)}.</small></div><div class="bid-actions"><button type="button" id="pass-bid">Pass this round</button><button type="submit" class="primary" ${unable?'disabled':''}>Review bid →</button></div><div id="bid-error" class="error" role="alert"></div></form>`;
   }
   function reviewAction(action) {
     pendingAction=action;
@@ -247,7 +254,7 @@
   }
   function result() {
     const board=E.sessionStandings(session),won=game.winner==='you';
-    const outcome=!game.winner?'The final round had no bids. Nothing was charged.':won?`You bought the crate for ${money(game.bid)} and ${game.receipt.profit<0?'lost':'made'} ${money(Math.abs(game.receipt.profit))}.`:game.passed?'You passed this crate. Your cash is unchanged.':`${bidderName(game.winner)} bought the crate. Your cash is unchanged.`;
+    const outcome=!game.winner?(game.reservePrice?'No bid met the reserve. Nobody pays.':'The final round had no bids. Nothing was charged.'):won?`You bought the crate for ${money(game.bid)} and ${game.receipt.profit<0?'lost':'made'} ${money(Math.abs(game.receipt.profit))}.`:game.passed?'You passed this crate. Your cash is unchanged.':`${bidderName(game.winner)} bought the crate. Your cash is unchanged.`;
     const total=session.cash-E.STARTING_CASH;
     const actions=session.ended?'<button type="button" class="primary" id="new-session">Start a new session →</button><button type="button" id="change-role">Choose a different role</button>':'<button type="button" class="primary" id="continue-session">Continue to the next auction →</button><button type="button" id="finish-session">Leave & settle session</button>';
     return `<div class="result-heading"><span class="eyebrow">${session.ended?'SESSION FINISHED':'AUCTION SETTLED'}</span><h1>${session.ended?'Your session is settled.':'One crate down. Your next decision.'}</h1><p>${outcome}</p></div>
@@ -278,20 +285,20 @@
     const input=main.querySelector('#bid-input');const range=main.querySelector('#bid-range');
     function updateBidDraft() {
       const amount=Number(draftBid),cash=E.getCash(game);
-      main.querySelector('#bid-balance').textContent=Number.isSafeInteger(amount)&&amount>=1&&amount<=cash?money(cash-amount):'—';
+      main.querySelector('#bid-balance').textContent=Number.isSafeInteger(amount)&&amount>=minimumBid()&&amount<=cash?money(cash-amount):'—';
       main.querySelector('#bid-error').textContent='';save();
     }
-    input?.addEventListener('input',()=>{draftBid=input.value;const amount=Number(draftBid);if(Number.isFinite(amount))range.value=String(Math.min(E.getCash(game),Math.max(1,amount)));updateBidDraft();});
+    input?.addEventListener('input',()=>{draftBid=input.value;const amount=Number(draftBid);if(Number.isFinite(amount))range.value=String(Math.max(minimumBid(),Math.min(E.getCash(game),amount)));updateBidDraft();});
     range?.addEventListener('input',()=>{draftBid=range.value;input.value=draftBid;updateBidDraft();});
     function stepBid(delta) {
       const amount=Number(draftBid);
-      draftBid=String(Math.min(E.getCash(game),Math.max(1,(Number.isSafeInteger(amount)?amount:0)+delta)));
+      draftBid=String(Math.max(minimumBid(),Math.min(E.getCash(game),(Number.isSafeInteger(amount)?amount:minimumBid())+delta)));
       input.value=draftBid;range.value=draftBid;updateBidDraft();
     }
     main.querySelector('#bid-decrease')?.addEventListener('click',()=>stepBid(-25));
     main.querySelector('#bid-increase')?.addEventListener('click',()=>stepBid(25));
-    main.querySelector('#bid-form')?.addEventListener('submit',event=>{event.preventDefault();try{const amount=Number(input.value),cash=E.getCash(game);if(!Number.isSafeInteger(amount)||amount<1||amount>cash)throw new Error(`Enter a whole-number bid from 1 to ${money(cash)}.`);reviewAction({type:'bid',amount,pass:false});}catch(error){main.querySelector('#bid-error').textContent=L.translate(error.message);}});
-    main.querySelector('#pass-bid')?.addEventListener('click',()=>reviewAction({type:'bid',amount:null,pass:true}));
+    main.querySelector('#bid-form')?.addEventListener('submit',event=>{event.preventDefault();try{const amount=Number(input.value),cash=E.getCash(game),minimum=minimumBid();if(cash<minimum)throw new Error(`You need at least ${money(minimum)} to bid on this crate. Pass this round.`);if(!Number.isSafeInteger(amount)||amount<minimum||amount>cash)throw new Error(`Enter a whole-number bid from ${money(minimum)} to ${money(cash)}.`);reviewAction({type:'bid',amount,pass:false});}catch(error){main.querySelector('#bid-error').textContent=L.translate(error.message);}});
+    main.querySelector('#pass-bid')?.addEventListener('click',()=>{if(game.phase==='inspect'){act('open');save();render();}reviewAction({type:'bid',amount:null,pass:true});});
     main.querySelectorAll('[data-sale]').forEach(button=>button.addEventListener('click',()=>{saleMode=button.dataset.sale;save();render();}));
     main.querySelectorAll('[data-repair]').forEach(button=>button.addEventListener('click',()=>{const id=button.dataset.repair;repairIds=repairIds.includes(id)?repairIds.filter(value=>value!==id):[...repairIds,id];save();render();}));
     main.querySelectorAll('[data-pair]').forEach(button=>button.addEventListener('click',()=>{const id=button.dataset.pair;pairIds=pairIds.includes(id)?pairIds.filter(value=>value!==id):[...pairIds,id];save();render();}));

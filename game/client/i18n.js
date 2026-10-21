@@ -15,6 +15,13 @@
   }
   let language = canonicalLanguage(new URLSearchParams(location.search).get('lang')) || savedLanguage() || 'en';
   const words = {
+    'Auction-house reserve':'拍卖行底价',
+    'Minimum bid · fixed for this crate':'最低报价 · 本箱保持不变',
+    'A winning bid must meet the reserve. This amount stays fixed for all three rounds.':'成交报价必须达到底价；本箱三轮的底价保持不变。',
+    'Your cash is below the reserve. You can pass this round.':'你的现金不足底价，可以跳过本轮。',
+    'No bid met the reserve. Nobody pays.':'没有报价达到底价，本轮不成交，所有人均不扣款。',
+    'New sessions: The auction house publishes a reserve before bidding, around 10% of the crate’s ordinary sale value (8–12%). Role abilities do not affect it. It stays fixed for all three rounds; even a sole bid must meet it. If the crate goes unsold, nobody pays.':'新开的拍卖：拍卖行在竞价前公布底价，约为整箱普通售价的 10%（8–12%）。角色能力不影响底价，本箱三轮的底价保持不变；即使只有一人出价，也必须达到底价。流拍不扣款。',
+    'Choose a valid reserve price.':'请选择有效的拍卖底价。',
     'The Salvager':'拆解师', 'Salvager':'拆解师', 'THE SALVAGER':'拆解师',
     'The Curator':'策展人', 'Curator':'策展人', 'THE CURATOR':'策展人',
     'Antique Dealer':'古董商', 'Dealer':'古董商', 'ANTIQUE DEALER':'古董商', 'DEALER':'古董商',
@@ -452,7 +459,9 @@
       [/^Session ledger · (\d+) crates?$/,(_,n)=>'本次拍卖账本 · '+n+' 箱'],
       [/^(\d+) crates? settled\.$/,(_,n)=>'已结算 '+n+' 箱。'],
       [/^Your bid limit: ([\d,]+)\.$/,(_,cash)=>'本轮报价上限：'+cash+'。'],
-      [/^Enter a whole-number bid from 1 to ([\d,]+)\.$/,(_,cash)=>Number(cash.replace(/,/g,''))===0?'当前现金为零，无法报价，请跳过本轮。':'请输入 1 至 '+cash+' 之间的整数报价。'],
+      [/^Enter a whole-number bid from ([\d,]+) to ([\d,]+)\.$/,(_,minimum,cash)=>Number(cash.replace(/,/g,''))===0?'当前现金为零，无法报价，请跳过本轮。':'请输入 '+minimum+' 至 '+cash+' 之间的整数报价。'],
+      [/^Enter a whole-number bid from ([\d,]+) to ([\d,]+), or pass\.$/,(_,minimum,cash)=>'请输入 '+minimum+' 至 '+cash+' 之间的整数报价，或跳过本轮。'],
+      [/^You need at least ([\d,]+) to bid on this crate\. Pass this round\.$/,(_,minimum)=>'竞拍本箱至少需要 '+minimum+' 现金，请跳过本轮。'],
       [/^(.+) bought the crate\. Your cash is unchanged\.$/,(_,name)=>`${words[name]||name}拍下了本箱，你的现金保持不变。`],
       [/^ROUND (\d) \/ 3$/,(_,n)=>'第 '+n+' / 3 轮'],
       [/^ROUND (\d) \/ 3 · BIDS REVEALED$/,(_,n)=>'第 '+n+' / 3 轮 · 报价已公开'],

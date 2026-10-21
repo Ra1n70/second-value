@@ -28,15 +28,15 @@ function fixture(room) {
 }
 function won(role) {
   const room = fixture(open(role));
-  command(room, 'host', 'bid', {amount: 1, pass: false});
+  command(room, 'host', 'bid', {amount: room.reservePrice, pass: false});
   command(room, 'guest', 'bid', {amount: null, pass: true});
   assert.equal(room.phase, 'dispose');
   return room;
 }
 const sell = slots => ({mode: 'special', repairSlots: [], pairSlots: [], abilitySlots: slots});
 
-test('new rooms advertise rules3 while old rooms keep their catalog across continued auctions', () => {
-  assert.equal(R.viewFor(open('broker'), 'host').rulesVersion, 3);
+test('new rooms advertise current rules while old rooms keep their catalog across continued auctions', () => {
+  assert.equal(R.viewFor(open('broker'), 'host').rulesVersion, 4);
   const legacy = open('appraiser', true);
   assert.equal(R.viewFor(legacy, 'host').rulesVersion, 2);
   const oldIds = new Set(E.catalogItems(2).map(item => item.catalogId));
@@ -62,11 +62,12 @@ test('new rooms advertise rules3 while old rooms keep their catalog across conti
 test('all three new role selections settle exactly the shared plan and reject a second credit', () => {
   for (const role of Object.keys(targets)) {
     const room = won(role), slots = targets[role];
-    const expected = E.salePlan(role, room.items, 'special', 999, {abilityIds: slots.map(slot => room.items[slot].id)});
+    const remainingCash = 1000 - room.reservePrice;
+    const expected = E.salePlan(role, room.items, 'special', remainingCash, {abilityIds: slots.map(slot => room.items[slot].id)});
     assert.ok(expected.recovery > room.items.reduce((sum, item) => sum + item.base, 0));
     command(room, 'host', 'sell', sell(slots));
     assert.equal(room.phase, 'result');
-    assert.equal(room.players[0].cash, 999 + expected.recovery);
+    assert.equal(room.players[0].cash, remainingCash + expected.recovery);
     assert.equal(room.receipt.cost, expected.cost);
     assert.equal(room.receipt.bonus, expected.bonus);
     assert.deepEqual(room.receipt.ability, slots);
@@ -105,7 +106,7 @@ test('expanded roles gain no private truth before hammer; old client payloads do
     const privateBefore = structuredClone(room);
     assert.throws(() => command(room, 'host', 'inspect', {slot: 0}));
     assert.deepEqual(room, privateBefore);
-    command(room, 'host', 'bid', {amount: 1, pass: false});
+    command(room, 'host', 'bid', {amount: room.reservePrice, pass: false});
     command(room, 'guest', 'bid', {amount: null, pass: true});
     const base = room.items.reduce((sum, item) => sum + item.base, 0);
     command(room, 'host', 'sell', {mode: 'special', repairSlots: [], pairSlots: []});

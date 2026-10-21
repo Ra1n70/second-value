@@ -7,7 +7,7 @@
   const STARTING_CASH = 1000;
   const CRATE_SIZE = 6;
   const MAX_SESSION_ACTIONS = 10000;
-  const RULES_VERSION = 3;
+  const RULES_VERSION = 4;
   const THEMES = {harbor:'Old Harbor', railway:'Railway'};
   const ROLES = {
     restorer: {name:'Restorer',short:'Restorer',mark:'R',tagline:'Find the value beneath the damage.',passive:'After winning, choose up to two genuine damaged objects to repair. Pay their fixed fees before selling.',skill:'Precision repair',skillText:'One ability: repair up to two eligible objects after purchase. No private inspection.',risk:'Repair gains are capped. Paying too much can still turn a good repair into a loss.'},
@@ -48,7 +48,7 @@
     {id:'console-radio',name:'Console receiver',shape:'radio',category:'instrument',theme:null,base:300,genuine:true,condition:'intact'},
     {id:'railway-map',name:'Original railway map',shape:'map',category:'document',theme:'railway',base:240,genuine:true,condition:'intact'}
   ].map(item=>({...item,catalogId:item.catalogId??item.id,appearance:item.shape,authenticity:item.genuine?'genuine':'reproduction',baseValue:item.base,harbor:item.theme==='harbor'}));
-  function validateRules(version) {if(![1,2,3].includes(version))throw new Error('Choose a valid rules revision.');return version;}
+  function validateRules(version) {if(![1,2,3,4].includes(version))throw new Error('Choose a valid rules revision.');return version;}
   function savedRules(raw) {return Object.hasOwn(raw,'rulesVersion')?validateRules(raw.rulesVersion):1;}
   function catalogItems(gameOrVersion) {
     const version=gameOrVersion===undefined?RULES_VERSION:typeof gameOrVersion==='number'?gameOrVersion:gameOrVersion.rulesVersion??1;
@@ -56,6 +56,13 @@
   }
   const SHAPES = {clock:'Clock-shaped object',cup:'Small ceramic object',badge:'Metal insignia',camera:'Camera-shaped object',radio:'Radio-shaped object',map:'Folded paper document'};
   function rng(seed) {let a=seed>>>0;return function(){a+=0x6D2B79F5;let t=Math.imul(a^(a>>>15),1|a);t^=t+Math.imul(t^(t>>>7),61|t);return ((t^(t>>>14))>>>0)/4294967296;};}
+  function crateReserve(items,seed,rulesVersion) {
+    if(rulesVersion<4)return 0;
+    // The auction house sets the reserve once before bidding. Its own stream
+    // keeps item draws, tie priority and existing computer quotes independent.
+    const percent=8+Math.floor(rng(seed^0x5A17B9C3)()*5);
+    return Math.max(1,Math.round(items.reduce((total,item)=>total+item.base,0)*percent/100));
+  }
   function clone(value) {return JSON.parse(JSON.stringify(value));}
   function validCash(value) {return Number.isSafeInteger(value)&&value>=0;}
   function getCash(game) {return game.startingCash===undefined?STARTING_CASH:game.startingCash;}
@@ -226,6 +233,7 @@
   function computerBids(items,random,context={}) {
     const round=context.round||1;
     const rulesVersion=validateRules(context.rulesVersion??RULES_VERSION);
+    const reservePrice=rulesVersion>=4?context.reservePrice??0:0;
     const names=['Marlow','Finch','Vale'],roles=rulesVersion>=3?(context.botRoles||['collector','restorer','appraiser']):['collector','restorer','appraiser'];
     return roles.map((role,index)=>{
       // All draws occur independently of truth and the current human quote.
@@ -234,18 +242,19 @@
       const risk=random(),theme=role==='collector'?(context.botThemes?.[index]||(themeDraw<.5?'harbor':'railway')):null;
       const cash=context.botCash?.[index]??STARTING_CASH;
       const targets=round>=2?[firstTarget,secondTarget]:[firstTarget];
-      let estimate=cash===0?0:estimateFromEvidence(items,role,targets,theme,{...context,round,cash});
+      let estimate=cash===0||cash<reservePrice?0:estimateFromEvidence(items,role,targets,theme,{...context,round,cash});
       const previous=context.history?.at(-1);
       if(previous) {
         const others=previous.bids.filter(b=>b.id!=='bot-'+index&&b.bid>0),signal=others.length?Math.max(...others.map(b=>b.bid)):0;
         estimate*=Math.max(.9,Math.min(1.1,1+(signal-estimate)*.12/Math.max(1,estimate)));
       }
       const baseFactor=(rulesVersion===1?[0,.48,.62,.72]:[0,.26,.50,.72])[round];
-      const bid=cash===0?0:Math.min(cash,Math.max(1,Math.round(estimate*(baseFactor+risk*.42)/10)*10));
+      const quote=cash===0?0:Math.min(cash,Math.max(1,Math.round(estimate*(baseFactor+risk*.42)/10)*10));
+      const bid=quote<reservePrice?0:quote;
       return {id:'bot-'+index,name:names[index],role,theme,bid};
     });
   }
-  function prepareBidders(game) {game.bots=computerBids(game.items,rng(game.seed^0x4F17C2),{round:game.round,history:game.history,publicIndex:game.publicIndex,botCash:game.botStartingCash,botThemes:game.botThemes,botRoles:game.botRoles,rulesVersion:game.rulesVersion??1});}
+  function prepareBidders(game) {game.bots=computerBids(game.items,rng(game.seed^0x4F17C2),{round:game.round,history:game.history,publicIndex:game.publicIndex,botCash:game.botStartingCash,botThemes:game.botThemes,botRoles:game.botRoles,rulesVersion:game.rulesVersion??1,reservePrice:game.reservePrice??0});}
   function seededBotRoles(seed) {
     // Role selection has its own stream, independent of the crate shuffle, truth,
     // human role and quotes. A session locks these choices for all later crates.
@@ -268,7 +277,7 @@
     const prefix=context.instancePrefix??String(seed>>>0);
     const items=pool.slice(0,CRATE_SIZE).map((item,index)=>({...item,id:`${prefix}-${index}-${item.catalogId}`}));
     const priority=['you','bot-0','bot-1','bot-2'],offset=Math.floor(random()*4),order=priority.slice(offset).concat(priority.slice(0,offset));
-    const game={version:4,rulesVersion,seed:seed>>>0,role,theme:role==='collector'?theme:null,startingCash,botStartingCash:[...botStartingCash],botThemes:context.botThemes?clone(context.botThemes):null,phase:'inspect',round:1,items,bots:[],priority:order,publicIndex:Math.floor(random()*CRATE_SIZE),selected:0,inspected:[],history:[],actions:[],bid:null,passed:false,winner:null,mode:null,receipt:null};
+    const game={version:4,rulesVersion,seed:seed>>>0,role,theme:role==='collector'?theme:null,startingCash,botStartingCash:[...botStartingCash],botThemes:context.botThemes?clone(context.botThemes):null,phase:'inspect',round:1,items,reservePrice:crateReserve(items,seed,rulesVersion),bots:[],priority:order,publicIndex:Math.floor(random()*CRATE_SIZE),selected:0,inspected:[],history:[],actions:[],bid:null,passed:false,winner:null,mode:null,receipt:null};
     if(rulesVersion>=3)game.botRoles=[...botRoles];
     if(context.noBots!==true)prepareBidders(game);return game;
   }
@@ -287,27 +296,30 @@
     // every inspection, the committed computer quotes, and the round's original funds.
     game.actions.pop();game.phase='inspect';
   }
-  function resolveRound(bids,priority,round) {
+  function resolveRound(bids,priority,round,reservePrice=0) {
     if(![1,2,3].includes(round))throw new Error('Invalid auction round.');
+    if(!Number.isSafeInteger(reservePrice)||reservePrice<0)throw new Error('Choose a valid reserve price.');
     const sorted=clone(bids).sort((a,b)=>b.bid-a.bid||priority.indexOf(a.id)-priority.indexOf(b.id)),highest=sorted[0]?.bid||0,second=sorted[1]?.bid||0;
-    const multiplier=[0,1.8,1.3,1][round],required=Math.max(1,Math.ceil(second*[0,18,13,10][round]/10)),hammered=highest>0&&(round===3||highest>=required);
-    return {round,bids:sorted,highest,second,multiplier,required,hammered,winner:hammered?sorted[0].id:null};
+    const multiplier=[0,1.8,1.3,1][round],required=Math.max(1,reservePrice,Math.ceil(second*[0,18,13,10][round]/10)),hammered=highest>0&&highest>=reservePrice&&(round===3||highest>=required);
+    return {round,bids:sorted,highest,second,multiplier,required,hammered,winner:hammered?sorted[0].id:null,...(reservePrice>0?{reservePrice}:{})};
   }
   function placeBid(game,amount,pass=false) {
     if(game.phase!=='bid')throw new Error('Bidding is not open.');
-    if(!pass&&(!Number.isSafeInteger(amount)||amount<1||amount>getCash(game)))throw new Error(`Enter a whole-number bid from 1 to ${getCash(game).toLocaleString('en-US')}.`);
+    const minimum=Math.max(1,game.reservePrice??0),cash=getCash(game);
+    if(!pass&&cash<minimum&&game.reservePrice>0)throw new Error(`You need at least ${minimum} to bid on this crate. Pass this round.`);
+    if(!pass&&(!Number.isSafeInteger(amount)||amount<minimum||amount>cash))throw new Error(`Enter a whole-number bid from ${minimum} to ${cash.toLocaleString('en-US')}.`);
     game.bid=pass?null:amount;game.passed=pass;
-    const bids=[...game.bots,{id:'you',name:'You',role:game.role,theme:game.theme,bid:pass?0:amount}],reveal=resolveRound(bids,game.priority,game.round);
+    const bids=[...game.bots,{id:'you',name:'You',role:game.role,theme:game.theme,bid:pass?0:amount}],reveal=resolveRound(bids,game.priority,game.round,game.reservePrice??0);
     game.history.push(reveal);game.actions.push({type:'bid',amount:pass?null:amount,pass});game.winner=reveal.winner;
     if(!reveal.hammered&&game.round<3)game.phase='round-summary';
-    else {game.phase=game.winner==='you'?'dispose':'result';if(game.winner!=='you')game.receipt={paid:0,sale:0,cost:0,bonus:0,recovery:0,profit:0,cash:getCash(game)};}
+    else {game.phase=game.winner==='you'?'dispose':'result';if(game.winner!=='you')game.receipt={paid:0,sale:0,cost:0,bonus:0,recovery:0,profit:0,cash:getCash(game),...(game.reservePrice>0?{reservePrice:game.reservePrice}:{})};}
     return reveal;
   }
   function nextRound(game) {if(game.phase!=='round-summary'||game.round>=3)throw new Error('The next round is not available.');game.round++;game.phase='inspect';game.bid=null;game.passed=false;prepareBidders(game);game.actions.push({type:'next'});}
   function settle(game,mode,selection={}) {
     if(game.phase!=='dispose'||game.winner!=='you')throw new Error('This crate is not awaiting your sale.');
     const plan=salePlan(game.role,game.items,mode,getCash(game)-game.bid,{...selection,theme:game.theme});
-    game.receipt={...plan,paid:game.bid,profit:plan.recovery-game.bid,cash:getCash(game)-game.bid+plan.recovery};game.mode=mode;game.phase='result';
+    game.receipt={...plan,paid:game.bid,profit:plan.recovery-game.bid,cash:getCash(game)-game.bid+plan.recovery,...(game.reservePrice>0?{reservePrice:game.reservePrice}:{})};game.mode=mode;game.phase='result';
     const committed={};if(game.role==='restorer')committed.repairIds=plan.repairs;if(game.role==='collector')committed.pairIds=plan.pair;
     if(['salvager','curator','broker'].includes(game.role))committed.abilityIds=plan.ability;
     game.actions.push({type:'sell',mode,selection:committed});return game.receipt;
@@ -369,7 +381,7 @@
     session.players=session.players.map(player=>{const settled=byId.get(player.id);return {...player,cash:settled.cash,profit:settled.cash-STARTING_CASH};});
     session.cash=session.game.receipt.cash;
     const winningBid=session.game.winner?session.game.history.at(-1).bids.find(bid=>bid.id===session.game.winner).bid:0;
-    session.history.push({auctionNumber:session.auctionNumber,winner:session.game.winner,paid:winningBid,humanPaid:session.game.receipt.paid,profit:session.game.receipt.profit,cash:session.cash,recovery:session.game.receipt.recovery,players:session.players.map(player=>({...player,auctionProfit:byId.get(player.id).profit}))});
+    session.history.push({auctionNumber:session.auctionNumber,winner:session.game.winner,paid:winningBid,humanPaid:session.game.receipt.paid,profit:session.game.receipt.profit,cash:session.cash,recovery:session.game.receipt.recovery,players:session.players.map(player=>({...player,auctionProfit:byId.get(player.id).profit})),...(session.game.reservePrice>0?{reservePrice:session.game.reservePrice}:{})});
     if(session.cash===0)session.ended=true;
   }
   function plainObject(value) {return value!==null&&typeof value==='object'&&!Array.isArray(value)&&(Object.getPrototypeOf(value)===Object.prototype||Object.getPrototypeOf(value)===null);}

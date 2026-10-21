@@ -51,6 +51,7 @@ function drawCrate(room) {
   const game = E.newGame('appraiser', seed, 'harbor', {rulesVersion: room.rulesVersion ?? 2, instancePrefix: 'room', noBots: true});
   room.items = game.items.map((item, slot) => ({...item, id: `lot-${slot}`}));
   room.publicIndex = game.publicIndex;
+  room.reservePrice = game.reservePrice;
   room.round = 1;
   room.history = [];
   room.winnerId = null;
@@ -73,7 +74,7 @@ function createRoom({code, seed, host} = {}) {
   if (typeof code !== 'string' || !/^[A-Z0-9]{4,12}$/.test(code)) fail('Choose a valid room code.');
   if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) fail('Choose a valid game seed.');
   const player = profile(host);
-  return {version: 1, rulesVersion: E.RULES_VERSION, code, seed, revision: 1, turnSequence: 0, turnId: `${code}:0`, phase: 'lobby', hostId: player.id, players: [player], auctionNumber: 0, round: 0, items: [], publicIndex: null, history: [], priority: [], winnerId: null, winningBid: null, receipt: null, ledger: [], endedReason: null};
+  return {version: 1, rulesVersion: E.RULES_VERSION, code, seed, revision: 1, turnSequence: 0, turnId: `${code}:0`, phase: 'lobby', hostId: player.id, players: [player], auctionNumber: 0, round: 0, items: [], publicIndex: null, reservePrice: 0, history: [], priority: [], winnerId: null, winningBid: null, receipt: null, ledger: [], endedReason: null};
 }
 function joinRoom(room, input) {
   validateRoom(room);
@@ -102,13 +103,13 @@ function validateCommand(command) {
 }
 function ledgerEntry(room) {
   if (room.ledger.some(entry => entry.auctionNumber === room.auctionNumber)) fail('This crate has already been settled.');
-  room.ledger.push({auctionNumber: room.auctionNumber, winnerId: room.winnerId, paid: room.winningBid || 0, players: room.players.map(player => ({id: player.id, name: player.name, cash: player.cash, profit: player.profit}))});
+  room.ledger.push({auctionNumber: room.auctionNumber, winnerId: room.winnerId, paid: room.winningBid || 0, players: room.players.map(player => ({id: player.id, name: player.name, cash: player.cash, profit: player.profit})), ...(room.reservePrice > 0 ? {reservePrice: room.reservePrice} : {})});
   for (const player of room.players) player.ready = false;
   phase(room, 'result');
 }
 function reveal(room) {
   const bids = activePlayers(room).map(player => ({id: player.id, name: player.name, role: player.role, theme: player.theme, bid: player.bid.pass ? 0 : player.bid.amount}));
-  const resolved = E.resolveRound(bids, room.priority, room.round);
+  const resolved = E.resolveRound(bids, room.priority, room.round, room.reservePrice ?? 0);
   room.history.push(resolved);
   room.winnerId = resolved.winner;
   room.winningBid = resolved.hammered ? resolved.highest : null;
@@ -164,7 +165,9 @@ function applyAction(room, actorId, command) {
   } else if (command.type === 'bid') {
     requirePhase(draft, ['auction']);
     if (player.bid) fail('Withdraw your existing bid before changing it.');
-    if (typeof command.pass !== 'boolean' || (command.pass ? command.amount !== null : !Number.isSafeInteger(command.amount) || command.amount < 1 || command.amount > player.cash)) fail(`Enter a whole-number bid from 1 to ${player.cash}, or pass.`);
+    const minimum = Math.max(1, draft.reservePrice ?? 0);
+    if (command.pass === false && player.cash < minimum && draft.reservePrice > 0) fail(`You need at least ${minimum} to bid on this crate. Pass this round.`);
+    if (typeof command.pass !== 'boolean' || (command.pass ? command.amount !== null : !Number.isSafeInteger(command.amount) || command.amount < minimum || command.amount > player.cash)) fail(`Enter a whole-number bid from ${minimum} to ${player.cash}, or pass.`);
     player.bid = {amount: command.amount, pass: command.pass};
     if (activePlayers(draft).every(candidate => candidate.bid)) reveal(draft);
   } else if (command.type === 'withdraw') {
@@ -191,7 +194,7 @@ function applyAction(room, actorId, command) {
     const plan = E.salePlan(player.role, draft.items, command.mode, player.cash, options);
     player.cash += plan.recovery;
     player.profit = player.cash - E.STARTING_CASH;
-    draft.receipt = {paid: draft.winningBid, sale: plan.sale, cost: plan.cost, bonus: plan.bonus, recovery: plan.recovery, profit: plan.recovery - draft.winningBid, cash: player.cash, repairs: plan.repairs.map(id => draft.items.findIndex(item => item.id === id)), pair: plan.pair.map(id => draft.items.findIndex(item => item.id === id)), ability: (plan.ability || []).map(id => draft.items.findIndex(item => item.id === id))};
+    draft.receipt = {paid: draft.winningBid, sale: plan.sale, cost: plan.cost, bonus: plan.bonus, recovery: plan.recovery, profit: plan.recovery - draft.winningBid, cash: player.cash, repairs: plan.repairs.map(id => draft.items.findIndex(item => item.id === id)), pair: plan.pair.map(id => draft.items.findIndex(item => item.id === id)), ability: (plan.ability || []).map(id => draft.items.findIndex(item => item.id === id)), ...(draft.reservePrice > 0 ? {reservePrice: draft.reservePrice} : {})};
     ledgerEntry(draft);
   } else if (command.type === 'continue') {
     requirePhase(draft, ['result']); requireHost(draft, player);
@@ -239,7 +242,7 @@ function viewFor(room, viewerId) {
   const publicRepair = room.round === 3 || opened;
   return {
     code: room.code, revision: room.revision, rulesVersion: room.rulesVersion ?? 2, turnId: room.turnId, phase: room.phase,
-    hostId: room.hostId, selfId: viewer.id, auctionNumber: room.auctionNumber, round: room.round,
+    hostId: room.hostId, selfId: viewer.id, auctionNumber: room.auctionNumber, round: room.round, reservePrice: room.reservePrice ?? 0,
     players: room.players.map(player => ({id: player.id, name: player.name, role: player.role, theme: player.theme, cash: player.cash, profit: player.profit, ready: player.ready, submitted: !!player.bid, active: player.active})),
     self: {id: viewer.id, role: viewer.role, theme: viewer.theme, cash: viewer.cash, inspectionsLeft: viewer.role === 'appraiser' ? Math.max(0, 2 - viewer.inspected.length) : 0, inspected: [...viewer.inspected], bid: clone(viewer.bid), submitted: !!viewer.bid},
     lots: room.items.map((item, slot) => publicItem(room, viewer, item, slot)),
