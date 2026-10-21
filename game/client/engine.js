@@ -7,12 +7,15 @@
   const STARTING_CASH = 1000;
   const CRATE_SIZE = 6;
   const MAX_SESSION_ACTIONS = 10000;
-  const RULES_VERSION = 2;
+  const RULES_VERSION = 3;
   const THEMES = {harbor:'Old Harbor', railway:'Railway'};
   const ROLES = {
-    restorer: {name:'The Restorer',short:'Restorer',mark:'R',tagline:'Find the value beneath the damage.',passive:'After winning, choose up to two genuine damaged objects to repair. Pay their fixed fees before selling.',skill:'Precision repair',skillText:'One ability: repair up to two eligible objects after purchase. No private inspection.',risk:'Repair gains are capped. Paying too much can still turn a good repair into a loss.'},
-    appraiser: {name:'The Appraiser',short:'Appraiser',mark:'A',tagline:'Know what everyone else is guessing.',passive:'Privately identify up to two objects across all three rounds. Ordinary sale prices are the same for everyone.',skill:'Authenticate',skillText:'Reveal one object’s identity, authenticity, condition, category, theme and exact base price.',risk:'Better information does not protect you from overbidding.'},
-    collector: {name:'The Collector',short:'Collector',mark:'C',tagline:'The missing piece changes everything.',passive:'Lock a theme before bidding. Deliver one pair of genuine objects with different identities and categories for a capped bonus.',skill:'Set delivery',skillText:'One ability: deliver one matching pair after purchase. Your chosen theme stays locked.',risk:'A crate may contain no valid pair for your chosen theme.'}
+    restorer: {name:'Restorer',short:'Restorer',mark:'R',tagline:'Find the value beneath the damage.',passive:'After winning, choose up to two genuine damaged objects to repair. Pay their fixed fees before selling.',skill:'Precision repair',skillText:'One ability: repair up to two eligible objects after purchase. No private inspection.',risk:'Repair gains are capped. Paying too much can still turn a good repair into a loss.'},
+    appraiser: {name:'Appraiser',short:'Appraiser',mark:'A',tagline:'Know what everyone else is guessing.',passive:'Privately identify up to two objects across all three rounds. Ordinary sale prices are the same for everyone.',skill:'Authenticate',skillText:'Reveal one object’s identity, authenticity, condition, category, theme and exact base price.',risk:'Better information does not protect you from overbidding.'},
+    collector: {name:'Collector',short:'Collector',mark:'C',tagline:'The missing piece changes everything.',passive:'Lock a theme before bidding. Deliver one pair of genuine objects with different identities and categories for a capped bonus.',skill:'Set delivery',skillText:'One ability: deliver one matching pair after purchase. Your chosen theme stays locked.',risk:'A crate may contain no valid pair for your chosen theme.'},
+    salvager: {name:'Salvager',short:'Salvager',mark:'S',tagline:'Even a fake can have useful parts.',passive:'After winning, dismantle up to two reproductions. Each costs 15 to process and sells for a fixed 90.',skill:'Parts harvest',skillText:'One ability: harvest parts from up to two reproductions after purchase. Genuine objects sell normally.',risk:'Genuine objects cannot be harvested. Each salvage gains only 5 to 55 in this catalog.'},
+    curator: {name:'Curator',short:'Curator',mark:'U',tagline:'Three different stories make an exhibition.',passive:'Exhibit exactly three genuine, intact objects from different categories. Pay 25 and earn a capped bonus on each.',skill:'Pop-up exhibition',skillText:'One ability: exhibit three eligible objects together. Each earns 20% of its base value, capped at 40.',risk:'You need three different categories and enough cash to pay the fee first. The net bonus is at most 95.'},
+    broker: {name:'Antique Dealer',short:'Antique Dealer',mark:'D',tagline:'Buy at auction. Sell to regulars.',passive:'After winning, sell one genuine, intact object to a regular customer. They pay 30% extra, up to 90; packing and delivery cost 25.',skill:'Customer order',skillText:'One ability: sell one eligible object to a regular customer after winning. Other objects sell normally.',risk:'Pay packing and delivery first. The extra profit is at most 65; low-value sales may lose money.'}
   };
   const ORIGINAL_ITEMS = [
     {id:'harbor-clock',name:'Old Harbor mantel clock',shape:'clock',category:'mechanical',theme:'harbor',base:180,genuine:true,condition:'damaged',repair:{cost:80,sale:305}},
@@ -36,12 +39,20 @@
   ].map(item=>({...item,catalogId:item.id,appearance:item.shape,authenticity:item.genuine?'genuine':'reproduction',baseValue:item.base,harbor:item.theme==='harbor'}));
   // Balance revisions are locked at session creation. Old replays retain their
   // original catalog themes and committed computer quotes, including future crates.
-  const ITEMS = ORIGINAL_ITEMS.map(item=>item.catalogId==='tea-cup'?{...item,theme:'railway'}:item);
-  function validateRules(version) {if(version!==1&&version!==RULES_VERSION)throw new Error('Choose a valid rules revision.');return version;}
+  const REVISION_TWO_ITEMS = ORIGINAL_ITEMS.map(item=>item.catalogId==='tea-cup'?{...item,theme:'railway'}:item);
+  const ITEMS = [...REVISION_TWO_ITEMS,
+    {id:'cabinet-clock',name:'Railway cabinet clock',shape:'clock',category:'mechanical',theme:'railway',base:220,genuine:true,condition:'intact'},
+    {id:'cracked-cup',name:'Cracked porcelain cup',shape:'cup',category:'ceramic',theme:null,base:150,genuine:true,condition:'damaged',repair:{cost:50,sale:235}},
+    {id:'navy-badge',name:'Naval service badge',shape:'badge',category:'insignia',theme:'harbor',base:70,genuine:true,condition:'intact'},
+    {id:'replica-camera',name:'Replica folding camera',shape:'camera',category:'imaging',theme:null,base:70,genuine:false,condition:'intact'},
+    {id:'console-radio',name:'Console receiver',shape:'radio',category:'instrument',theme:null,base:300,genuine:true,condition:'intact'},
+    {id:'railway-map',name:'Original railway map',shape:'map',category:'document',theme:'railway',base:240,genuine:true,condition:'intact'}
+  ].map(item=>({...item,catalogId:item.catalogId??item.id,appearance:item.shape,authenticity:item.genuine?'genuine':'reproduction',baseValue:item.base,harbor:item.theme==='harbor'}));
+  function validateRules(version) {if(![1,2,3].includes(version))throw new Error('Choose a valid rules revision.');return version;}
   function savedRules(raw) {return Object.hasOwn(raw,'rulesVersion')?validateRules(raw.rulesVersion):1;}
   function catalogItems(gameOrVersion) {
     const version=gameOrVersion===undefined?RULES_VERSION:typeof gameOrVersion==='number'?gameOrVersion:gameOrVersion.rulesVersion??1;
-    return validateRules(version)===1?ORIGINAL_ITEMS:ITEMS;
+    return validateRules(version)===1?ORIGINAL_ITEMS:version===2?REVISION_TWO_ITEMS:ITEMS;
   }
   const SHAPES = {clock:'Clock-shaped object',cup:'Small ceramic object',badge:'Metal insignia',camera:'Camera-shaped object',radio:'Radio-shaped object',map:'Folded paper document'};
   function rng(seed) {let a=seed>>>0;return function(){a+=0x6D2B79F5;let t=Math.imul(a^(a>>>15),1|a);t^=t+Math.imul(t^(t>>>7),61|t);return ((t^(t>>>14))>>>0)/4294967296;};}
@@ -50,7 +61,7 @@
   function getCash(game) {return game.startingCash===undefined?STARTING_CASH:game.startingCash;}
   function validateRole(role) {if(!Object.hasOwn(ROLES,role))throw new Error('Choose a valid role.');}
   function validateTheme(theme) {if(!Object.hasOwn(THEMES,theme))throw new Error('Choose a valid collection theme.');}
-  function catalogFor(shape) {const pool=ITEMS.filter(item=>item.shape===shape);if(!pool.length)throw new Error('Unknown object appearance.');const prices=pool.map(item=>item.base);return {shape,label:SHAPES[shape],min:Math.min(...prices),max:Math.max(...prices)};}
+  function catalogFor(shape,revision) {const pool=catalogItems(revision).filter(item=>item.shape===shape);if(!pool.length)throw new Error('Unknown object appearance.');const prices=pool.map(item=>item.base);return {shape,label:SHAPES[shape],min:Math.min(...prices),max:Math.max(...prices)};}
   function inspect(role,items,index) {
     validateRole(role);
     if(role!=='appraiser')throw new Error('Only the appraiser has a private inspection ability.');
@@ -59,6 +70,16 @@
   }
   function repairGain(item) {return item.repair?item.repair.sale-item.repair.cost-item.base:0;}
   function canRepair(item) {return item.genuine===true&&item.condition==='damaged'&&item.repair&&Number.isInteger(item.repair.cost)&&item.repair.cost>=0&&Number.isInteger(item.repair.sale)&&repairGain(item)>0&&repairGain(item)<=Math.min(60,Math.floor(item.base/4));}
+  function abilityEligibility(role,item) {
+    validateRole(role);
+    if(!item||typeof item!=='object')return false;
+    if(role==='restorer')return Boolean(canRepair(item));
+    if(role==='collector')return item.genuine===true;
+    if(role==='salvager')return item.genuine===false;
+    if(role==='curator'||role==='broker')return item.genuine===true&&item.condition==='intact';
+    return false;
+  }
+  function abilitySelectionLimit(role) {validateRole(role);return role==='curator'?3:role==='broker'?1:role==='appraiser'?0:2;}
   function isPair(a,b,theme) {return a.id!==b.id&&a.catalogId!==b.catalogId&&a.category!==b.category&&a.genuine===true&&b.genuine===true&&a.theme===theme&&b.theme===theme;}
   function targetItems(ids,items) {
     if(!Array.isArray(ids))throw new Error('Choose a list of object IDs.');
@@ -78,7 +99,7 @@
       }
       if(processing.length===selected.length) {
         const sale=ordinary+selected.reduce((sum,item)=>sum+item.repair.sale,0),cost=selected.reduce((sum,item)=>sum+item.repair.cost,0);
-        return {sale,cost,bonus:0,recovery:sale-cost,repairs:order.map(item=>item.id),pair:[],processing};
+        return {sale,cost,bonus:0,recovery:sale-cost,repairs:order.map(item=>item.id),pair:[],ability:[],processing};
       }
     }
     return null;
@@ -88,14 +109,17 @@
     if(!['ordinary','special'].includes(mode))throw new Error('Choose a valid sale method.');
     if(!Number.isInteger(cashAfterPurchase)||cashAfterPurchase<0)throw new Error('Available cash must be a nonnegative whole number.');
     if(!options||typeof options!=='object'||Array.isArray(options))throw new Error('Choose valid processing options.');
+    if(Object.keys(options).some(key=>!['repairIds','pairIds','abilityIds','theme'].includes(key)))throw new Error('Choose valid processing options.');
     if(!Array.isArray(items)||items.some(item=>typeof item.id!=='string'||!Number.isInteger(item.base)||item.base<0)||new Set(items.map(item=>item.id)).size!==items.length)throw new Error('The crate must contain distinct valid objects.');
     const repairSelection=Object.hasOwn(options,'repairIds')?targetItems(options.repairIds,items):null;
     const pairSelection=Object.hasOwn(options,'pairIds')?targetItems(options.pairIds,items):null;
+    const abilitySelection=Object.hasOwn(options,'abilityIds')?targetItems(options.abilityIds,items):null;
     if(repairSelection&&role!=='restorer')throw new Error('Only the restorer can select repairs.');
     if(pairSelection&&role!=='collector')throw new Error('Only the collector can select a pair.');
-    if((repairSelection?.length||pairSelection?.length)&&mode!=='special')throw new Error('Processing requires the special sale method.');
+    if(abilitySelection&&!['salvager','curator','broker'].includes(role))throw new Error('Only the matching role can select ability objects.');
+    if((repairSelection?.length||pairSelection?.length||abilitySelection?.length)&&mode!=='special')throw new Error('Processing requires the special sale method.');
     const base=items.reduce((sum,item)=>sum+item.base,0);
-    const ordinary={sale:base,cost:0,bonus:0,recovery:base,repairs:[],pair:[],processing:[]};
+    const ordinary={sale:base,cost:0,bonus:0,recovery:base,repairs:[],pair:[],ability:[],processing:[]};
     if(mode==='ordinary'||role==='appraiser')return ordinary;
     if(role==='restorer') {
       if(repairSelection) {
@@ -109,6 +133,59 @@
       const candidates=eligible.map(item=>[item]);
       for(let a=0;a<eligible.length;a++)for(let b=a+1;b<eligible.length;b++)candidates.push([eligible[a],eligible[b]]);
       for(const selected of candidates) {const plan=repairPlan(items,selected,cashAfterPurchase);if(plan&&(plan.recovery>best.recovery||(plan.recovery===best.recovery&&plan.cost<best.cost)))best=plan;}
+      return best;
+    }
+    if(['salvager','curator','broker'].includes(role)) {
+      function processingPlan(selected) {
+        if(selected.length===0)return ordinary;
+        if(role==='salvager') {
+          if(selected.length>2)throw new Error('Select at most two salvage objects.');
+          if(selected.some(item=>!abilityEligibility(role,item)))throw new Error('Selected object cannot be salvaged.');
+        } else if(role==='curator') {
+          if(selected.length!==3)throw new Error('Select exactly three exhibition objects.');
+          if(selected.some(item=>!abilityEligibility(role,item))||new Set(selected.map(item=>item.category)).size!==3)throw new Error('Exhibition objects must be genuine, intact and from different categories.');
+        } else {
+          if(selected.length!==1)throw new Error('Choose exactly one object to sell to your customer.');
+          if(selected.some(item=>!abilityEligibility(role,item)))throw new Error('Your customer buys only genuine, intact objects.');
+        }
+        const selectedIds=new Set(selected.map(item=>item.id));
+        const unselectedBase=items.filter(item=>!selectedIds.has(item.id)).reduce((sum,item)=>sum+item.base,0);
+        let available=cashAfterPurchase+unselectedBase;
+        const processing=[];
+        if(role==='salvager') {
+          for(const item of selected) {
+            if(available<15)return null;
+            const before=available;available+=90-15;
+            processing.push({id:item.id,availableBefore:before,cost:15,sale:90,availableAfter:available});
+          }
+          const sale=unselectedBase+90*selected.length,cost=15*selected.length;
+          return {...ordinary,sale,cost,recovery:sale-cost,ability:selected.map(item=>item.id),processing};
+        }
+        if(available<25)return null;
+        const bonus=role==='curator'?selected.reduce((sum,item)=>sum+Math.min(40,Math.floor(item.base/5)),0):Math.min(90,Math.floor(selected[0].base*3/10));
+        const selectedSale=selected.reduce((sum,item)=>sum+item.base,0)+bonus;
+        processing.push({id:selected[0].id,ids:selected.map(item=>item.id),availableBefore:available,cost:25,sale:selectedSale,availableAfter:available+selectedSale-25});
+        return {...ordinary,cost:25,bonus,recovery:base+bonus-25,ability:selected.map(item=>item.id),processing};
+      }
+      if(abilitySelection) {
+        const plan=processingPlan(abilitySelection);
+        if(!plan)throw new Error('Not enough cash to pay the selected processing fees first.');
+        return plan;
+      }
+      const eligible=items.filter(item=>abilityEligibility(role,item));
+      const count=role==='curator'?3:role==='broker'?1:2;
+      const candidates=[];
+      function choose(start,selected) {
+        if((role==='salvager'&&selected.length>0)||selected.length===count)candidates.push(selected);
+        if(selected.length===count)return;
+        for(let index=start;index<eligible.length;index++)choose(index+1,[...selected,eligible[index]]);
+      }
+      choose(0,[]);let best=ordinary;
+      for(const selected of candidates) {
+        if(role==='curator'&&new Set(selected.map(item=>item.category)).size!==3)continue;
+        const plan=processingPlan(selected);
+        if(plan&&(plan.recovery>best.recovery||(plan.recovery===best.recovery&&plan.cost<best.cost)))best=plan;
+      }
       return best;
     }
     const theme=Object.hasOwn(options,'theme')?options.theme:'harbor';validateTheme(theme);
@@ -149,7 +226,7 @@
   function computerBids(items,random,context={}) {
     const round=context.round||1;
     const rulesVersion=validateRules(context.rulesVersion??RULES_VERSION);
-    const names=['Marlow','Finch','Vale'],roles=['collector','restorer','appraiser'];
+    const names=['Marlow','Finch','Vale'],roles=rulesVersion>=3?(context.botRoles||['collector','restorer','appraiser']):['collector','restorer','appraiser'];
     return roles.map((role,index)=>{
       // All draws occur independently of truth and the current human quote.
       const themeDraw=random(),firstTarget=Math.floor(random()*items.length);
@@ -168,21 +245,32 @@
       return {id:'bot-'+index,name:names[index],role,theme,bid};
     });
   }
-  function prepareBidders(game) {game.bots=computerBids(game.items,rng(game.seed^0x4F17C2),{round:game.round,history:game.history,publicIndex:game.publicIndex,botCash:game.botStartingCash,botThemes:game.botThemes,rulesVersion:game.rulesVersion??1});}
+  function prepareBidders(game) {game.bots=computerBids(game.items,rng(game.seed^0x4F17C2),{round:game.round,history:game.history,publicIndex:game.publicIndex,botCash:game.botStartingCash,botThemes:game.botThemes,botRoles:game.botRoles,rulesVersion:game.rulesVersion??1});}
+  function seededBotRoles(seed) {
+    // Role selection has its own stream, independent of the crate shuffle, truth,
+    // human role and quotes. A session locks these choices for all later crates.
+    const roles=Object.keys(ROLES),random=rng(seed^0x719BC46D);
+    for(let index=roles.length-1;index>0;index--){const target=Math.floor(random()*(index+1));[roles[index],roles[target]]=[roles[target],roles[index]];}
+    return roles.slice(0,3);
+  }
   function newGame(role,seed,theme='harbor',context={}) {
     validateRole(role);if(!Number.isInteger(seed)||seed<0||seed>0xFFFFFFFF)throw new Error('Choose a valid game seed.');
     const rulesVersion=validateRules(context.rulesVersion??RULES_VERSION);
+    if(rulesVersion<3&&['salvager','curator','broker'].includes(role))throw new Error('Choose a valid role.');
     if(role==='collector')validateTheme(theme);
     const startingCash=context.startingCash??STARTING_CASH,botStartingCash=context.botCash??[STARTING_CASH,STARTING_CASH,STARTING_CASH];
     if(!validCash(startingCash)||!Array.isArray(botStartingCash)||botStartingCash.length!==3||!botStartingCash.every(validCash))throw new Error('Available cash must be a nonnegative whole number.');
-    if(context.botThemes&&(!Array.isArray(context.botThemes)||context.botThemes.length!==3||!Object.hasOwn(THEMES,context.botThemes[0])||context.botThemes[1]!==null||context.botThemes[2]!==null))throw new Error('Choose valid locked computer themes.');
+    const botRoles=rulesVersion>=3?(context.botRoles??seededBotRoles(seed)):['collector','restorer','appraiser'];
+    if(!Array.isArray(botRoles)||botRoles.length!==3||new Set(botRoles).size!==3||botRoles.some(botRole=>!Object.hasOwn(ROLES,botRole)))throw new Error('Choose valid locked computer roles.');
+    if(context.botThemes&&(!Array.isArray(context.botThemes)||context.botThemes.length!==3||context.botThemes.some((botTheme,index)=>botRoles[index]==='collector'?!Object.hasOwn(THEMES,botTheme):botTheme!==null)))throw new Error('Choose valid locked computer themes.');
     const random=rng(seed),pool=clone(catalogItems(rulesVersion));
     for(let i=pool.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
     const prefix=context.instancePrefix??String(seed>>>0);
     const items=pool.slice(0,CRATE_SIZE).map((item,index)=>({...item,id:`${prefix}-${index}-${item.catalogId}`}));
     const priority=['you','bot-0','bot-1','bot-2'],offset=Math.floor(random()*4),order=priority.slice(offset).concat(priority.slice(0,offset));
     const game={version:4,rulesVersion,seed:seed>>>0,role,theme:role==='collector'?theme:null,startingCash,botStartingCash:[...botStartingCash],botThemes:context.botThemes?clone(context.botThemes):null,phase:'inspect',round:1,items,bots:[],priority:order,publicIndex:Math.floor(random()*CRATE_SIZE),selected:0,inspected:[],history:[],actions:[],bid:null,passed:false,winner:null,mode:null,receipt:null};
-    prepareBidders(game);return game;
+    if(rulesVersion>=3)game.botRoles=[...botRoles];
+    if(context.noBots!==true)prepareBidders(game);return game;
   }
   function useSkill(game,index) {
     if(game.phase!=='inspect')throw new Error('Inspection is closed.');
@@ -221,6 +309,7 @@
     const plan=salePlan(game.role,game.items,mode,getCash(game)-game.bid,{...selection,theme:game.theme});
     game.receipt={...plan,paid:game.bid,profit:plan.recovery-game.bid,cash:getCash(game)-game.bid+plan.recovery};game.mode=mode;game.phase='result';
     const committed={};if(game.role==='restorer')committed.repairIds=plan.repairs;if(game.role==='collector')committed.pairIds=plan.pair;
+    if(['salvager','curator','broker'].includes(game.role))committed.abilityIds=plan.ability;
     game.actions.push({type:'sell',mode,selection:committed});return game.receipt;
   }
   function standings(game) {
@@ -260,6 +349,7 @@
       startingCash:session.cash,
       botCash:session.players.slice(1).map(player=>player.cash),
       botThemes:session.players.slice(1).map(player=>player.theme),
+      botRoles:session.players.slice(1).map(player=>player.role),
       rulesVersion:session.rulesVersion??1,
       instancePrefix:`${session.seed}-${session.auctionNumber}-${sessionSeed(session.seed,session.auctionNumber)}`
     });
@@ -301,7 +391,7 @@
     if(type==='sell') {
       if(!exactKeys(payload,['mode','selection'])||!['ordinary','special'].includes(payload.mode)||!plainObject(payload.selection))throw new Error('Choose a valid sale action.');
       const keys=Object.keys(payload.selection);
-      if(keys.some(key=>!['repairIds','pairIds'].includes(key))||keys.some(key=>!Array.isArray(payload.selection[key])||payload.selection[key].some(id=>typeof id!=='string')))throw new Error('Choose valid processing options.');
+      if(keys.some(key=>!['repairIds','pairIds','abilityIds'].includes(key))||keys.some(key=>!Array.isArray(payload.selection[key])||payload.selection[key].some(id=>typeof id!=='string')))throw new Error('Choose valid processing options.');
       return {type,mode:payload.mode,selection:clone(payload.selection)};
     }
     throw new Error('Choose a valid session action.');
@@ -362,5 +452,5 @@
       return session;
     } catch {return null;}
   }
-  return {STARTING_CASH,CRATE_SIZE,MAX_SESSION_ACTIONS,RULES_VERSION,ROLES,THEMES,ITEMS,SHAPES,rng,catalogFor,catalogItems,inspect,salePlan,computerBids,newGame,useSkill,openBidding,returnToInspection,resolveRound,placeBid,nextRound,settle,standings,restore,getCash,newSession,performSession,sessionStandings,restoreSession};
+  return {STARTING_CASH,CRATE_SIZE,MAX_SESSION_ACTIONS,RULES_VERSION,ROLES,THEMES,ITEMS,SHAPES,rng,catalogFor,catalogItems,abilityEligibility,abilitySelectionLimit,inspect,salePlan,computerBids,newGame,useSkill,openBidding,returnToInspection,resolveRound,placeBid,nextRound,settle,standings,restore,getCash,newSession,performSession,sessionStandings,restoreSession};
 });

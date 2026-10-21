@@ -3,6 +3,7 @@
   'use strict';
   const base = window.SecondValueLocale;
   const words = {
+    'Start a new room to use the expanded roles.':'请创建新房间，体验新增角色。',
     'Second Value multiplayer home':'余价拍卖行联机首页',
     'MULTIPLAYER':'多人拍卖', 'Connecting…':'正在连接…', 'Connected':'已连接',
     'Reconnecting…':'正在重新连接…', 'Connection paused':'连接暂时中断',
@@ -132,7 +133,7 @@
     'This player has already joined.':'你已加入这个房间。',
     'The room already has four players.':'房间已有四位玩家，暂时无法加入。',
     'This crate has already been settled.':'本箱已经结算。',
-    'Choose valid processing objects.':'请选择有效的处理拍品，每次最多两件。',
+    'Choose valid processing objects.':'请选择符合能力要求的有效拍品。',
     'The room has moved on. Refresh before trying again.':'房间已进入下一阶段，正在同步最新进度，请稍后重试。',
     'This room has ended.':'本场拍卖已经结束。',
     'Choose a valid ready status.':'准备状态无效，请重试。',
@@ -148,6 +149,7 @@
     'Those processing objects do not match your role.':'所选拍品处理方式与你的角色不符。'
   };
   const spanishWords = {
+    'Start a new room to use the expanded roles.':'Crea una sala nueva para usar los personajes añadidos.',
     'Second Value multiplayer home':'Inicio multijugador de Second Value',
     'MULTIPLAYER':'MULTIJUGADOR', 'Connecting…':'Conectando…', 'Connected':'Conectado',
     'Reconnecting…':'Reconectando…', 'Connection paused':'Conexión en pausa',
@@ -277,7 +279,7 @@
     'This player has already joined.':'Ya te has unido a esta sala.',
     'The room already has four players.':'La sala ya tiene cuatro jugadores.',
     'This crate has already been settled.':'Esta caja ya está liquidada.',
-    'Choose valid processing objects.':'Elige objetos válidos para procesar; como máximo, dos.',
+    'Choose valid processing objects.':'Elige objetos válidos que cumplan los requisitos de la habilidad.',
     'The room has moved on. Refresh before trying again.':'La sala ha avanzado a la siguiente fase. Espera mientras se sincroniza e inténtalo de nuevo.',
     'This room has ended.':'Esta sesión ya ha terminado.',
     'Choose a valid ready status.':'El estado de preparación no es válido. Inténtalo de nuevo.',

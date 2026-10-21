@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import {createRequire} from 'node:module';
 import { createRoomApi } from '../lib/room-api.mjs';
 import { createSqliteD1 } from './helpers/sqlite-d1.mjs';
 
@@ -10,6 +11,7 @@ const SITE = 'https://second-value.test.chatgpt.site';
 const hostProfile = { name: 'Private Appraiser', role: 'appraiser', theme: 'harbor' };
 const guestProfile = { name: 'Workshop Guest', role: 'restorer', theme: 'railway' };
 const migration = await readFile(new URL('../drizzle/0000_natural_firebrand.sql', import.meta.url), 'utf8');
+const E = createRequire(import.meta.url)('../game/engine.cjs');
 let sequence = 0;
 const requestId = () => `native-room-request-${++sequence}`;
 
@@ -126,6 +128,44 @@ function noSecrets(view, credentials = []) {
     for (const key of ['catalogId', 'name', 'base', 'genuine', 'condition', 'category', 'theme', 'repair']) assert.equal(key in lot, false);
   }
 }
+
+test('new role choices and fees survive a simultaneous D1 sale replay without leaking candidate targets', async t => {
+  const api = await harness(t);
+  const catalogIds = ['map-print', 'replica-camera', 'studio-camera', 'star-chart', 'travel-radio', 'crew-badge'];
+  const selections = {salvager: [0, 1], curator: [2, 3, 4], broker: [2]};
+  for (const [role, slots] of Object.entries(selections)) {
+    const host = await api.create({name: 'Role QA', role});
+    const guest = await api.join(host);
+    for (const member of [host, guest]) assert.equal((await api.command(member, {type: 'ready', ready: true})).status, 200);
+    assert.equal((await api.command(host, {type: 'start'})).status, 200);
+    // Deterministic sale fixture; hidden identities still cross only viewFor().
+    const stored = await api.db.prepare('SELECT record_json FROM auction_rooms WHERE code = ?').bind(host.roomCode).first();
+    const record = JSON.parse(stored.record_json);
+    record.state.items = catalogIds.map((catalogId, slot) => ({...E.catalogItems(3).find(item => item.catalogId === catalogId), id: `lot-${slot}`}));
+    await api.db.prepare('UPDATE auction_rooms SET record_json = ? WHERE code = ?').bind(JSON.stringify(record), host.roomCode).run();
+    noSecrets(await api.view(host), [host, guest]);
+    await api.command(host, {type: 'bid', amount: 1, pass: false});
+    await api.command(guest, {type: 'bid', amount: null, pass: true});
+    const opened = await api.view(host);
+    assert.equal(opened.rulesVersion, 3);
+    const expected = E.salePlan(role, opened.lots, 'special', 999, {abilityIds: slots.map(slot => opened.lots[slot].id)});
+    const saleCommand = {type: 'sell', turnId: opened.turnId, mode: 'special', repairSlots: [], pairSlots: [], abilitySlots: slots};
+    const id = requestId();
+    const results = await api.race(host.roomCode, [() => api.action(host, saleCommand, id), () => api.action(host, saleCommand, id)]);
+    assert.deepEqual(results.map(result => result.status), [200, 200]);
+    await api.reopen();
+    const after = await api.view(host);
+    assert.equal(after.phase, 'result');
+    assert.equal(after.self.cash, 999 + expected.recovery);
+    assert.equal(after.receipt.cost, expected.cost);
+    assert.equal(after.receipt.bonus, expected.bonus);
+    assert.deepEqual(after.receipt.ability, slots);
+    assert.equal(after.ledger.length, 1);
+    englishError(await api.action(host, saleCommand), 409);
+    assert.equal((await api.view(host)).self.cash, after.self.cash);
+    assert.equal((await api.view(guest)).self.cash, 1000);
+  }
+});
 
 test('native D1 persists credentials, private notes and a sealed bid across completely reopened handlers', async t => {
   const api = await harness(t);

@@ -2,6 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const game = require('../game/engine.cjs');
 
 const client = new URL('../game/client/', import.meta.url);
 const readClient = name => readFile(new URL(name, client), 'utf8');
@@ -320,6 +324,10 @@ const baseDynamic = [
   'Leading bid: Marlow at 1,000.', 'Runner-up bid: 900.', 'Early sale required a leading bid of at least 1,620.',
   '2 / 2 inspections remain for the entire crate.', 'Open round 2 →', 'SALE PREVIEW · VIRTUAL COINS',
   'Choose Restorer', 'Enter as Collector →', 'The risk: Without a matching pair, there is no collection bonus.',
+  'Choose Salvager', 'Choose Curator', 'Choose Antique Dealer', 'Choose Dealer',
+  'Enter as Dealer →', 'Enter as Antique Dealer →',
+  'Select ability object: Replica folding camera', '· Curator', 'Salvager · You',
+  '· Antique Dealer', '· Dealer', 'Dealer · You', 'Antique Dealer · You',
   'Authenticate · 2 uses', '01 / Inspect', 'Old Harbor storage · CRATE-123', 'Select object 2',
   'Select repair: Old Harbor mantel clock', 'Select collection: Harbor crew badge',
   '1 / 2 repairs selected', '2 / 2 collection objects selected', '3 / 6 confirmed', 'B · Metal insignia',
@@ -329,6 +337,7 @@ const baseDynamic = [
   'Repairable. Workshop fee: 25. Restored sale price: 150.',
   'Harbor crew badge. Genuine. Condition: intact. Category: insignia. Theme: Old Harbor. Base sale price: 120.',
   'Harbor crew badge. Genuine. Base sale price: 120.', 'SOLD TO YOU · 1,000 COINS',
+  'Original railway map. Genuine. Condition: intact. Category: document. Theme: Railway. Base sale price: 160.',
   'Genuine · Old Harbor · Not repairable', 'Genuine · Old Harbor · Repair 25 → sell 150',
   '120 base', '1,230 after fees', 'You bought the crate for 1,000 and lost 120.',
   'Marlow bought the crate. You kept your 1,000 coins.', 'Marlow & Finch share the win.',
@@ -371,4 +380,59 @@ test('Spanish localizes multiplayer status, validation, repair preview and invit
     assert.doesNotMatch(output, /[\u3400-\u9fff]|undefined|NaN/, source);
     assertNumbersPreserved(source, output);
   }
+});
+
+test('all six role descriptions and every current catalog name localize in Chinese and Spanish', async () => {
+  assert.equal(Object.keys(game.ROLES).length, 6);
+  const h = await localeHarness({ online: true });
+  const roleFields = ['name', 'short', 'tagline', 'passive', 'skill', 'skillText', 'risk'];
+  const strings = [
+    ...Object.values(game.ROLES).flatMap(role => roleFields.map(field => role[field])),
+    ...game.catalogItems(game.RULES_VERSION).map(item => item.name),
+  ];
+  for (const language of ['zh-CN', 'es']) {
+    h.base.setLanguage(language);
+    for (const source of strings) {
+      const output = h.locale.translate(source);
+      assert.notEqual(output, source, `${language}: ${source}`);
+      assert.doesNotMatch(output, /undefined|NaN/, source);
+      if (language === 'es') assert.doesNotMatch(output, /[\u3400-\u9fff]/, source);
+      assertNumbersPreserved(source, output);
+    }
+  }
+});
+
+test('new role controls and processing validation switch in place without losing their source', async () => {
+  const h = await localeHarness({ online: true });
+  const sources = [
+    'Only the matching role can select ability objects.',
+    'Select at most two salvage objects.', 'Selected object cannot be salvaged.',
+    'Not enough cash to pay the selected processing fees first.',
+    'Select exactly three exhibition objects.',
+    'Exhibition objects must be genuine, intact and from different categories.',
+    'Choose exactly one object to sell to your customer.', 'Your customer buys only genuine, intact objects.',
+    'Start a new room to use the expanded roles.',
+    'Choose valid locked computer roles.', 'Choose valid processing objects.',
+    'No objects selected. Ordinary sale applies with no ability fee.',
+    'Customer order', 'Customer premium', 'Packing & delivery',
+    'The risk: Pay packing and delivery first. The extra profit is at most 65; low-value sales may lose money.',
+    'Select ability object: Original railway map',
+  ];
+  const labels = sources.map(source => h.main.append(new Element('p', {}, source)));
+  const button = h.main.append(new Element('button', { 'aria-label': 'Choose Curator' }, 'Curator'));
+  const user = h.main.append(new Element('span', { 'data-user-text': '' }, 'Broker'));
+  for (const language of ['zh-CN', 'es', 'en', 'zh-CN', 'en']) {
+    h.base.setLanguage(language);
+    h.locale.localize(h.main);
+    labels.forEach((label, index) => {
+      const source = sources[index];
+      assert.equal(label.textContent, h.locale.translate(source), `${language}: ${source}`);
+      if (language !== 'en') assert.notEqual(label.textContent, source, source);
+      assertNumbersPreserved(source, label.textContent);
+    });
+    assert.equal(button.getAttribute('aria-label'), h.locale.translate('Choose Curator'));
+    assert.equal(button.textContent, { en: 'Curator', 'zh-CN': '策展人', es: 'Curador' }[language]);
+    assert.equal(user.textContent, 'Broker');
+  }
+  assert.deepEqual(h.navigation, []);
 });

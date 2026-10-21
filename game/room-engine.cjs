@@ -47,7 +47,8 @@ function crateSeed(seed, ordinal) {
 }
 function drawCrate(room) {
   const seed = crateSeed(room.seed, room.auctionNumber);
-  const game = E.newGame('appraiser', seed, 'harbor', {rulesVersion: 2, instancePrefix: 'room'});
+  // A room keeps its catalog across deployments and consecutive crates.
+  const game = E.newGame('appraiser', seed, 'harbor', {rulesVersion: room.rulesVersion ?? 2, instancePrefix: 'room', noBots: true});
   room.items = game.items.map((item, slot) => ({...item, id: `lot-${slot}`}));
   room.publicIndex = game.publicIndex;
   room.round = 1;
@@ -72,12 +73,13 @@ function createRoom({code, seed, host} = {}) {
   if (typeof code !== 'string' || !/^[A-Z0-9]{4,12}$/.test(code)) fail('Choose a valid room code.');
   if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) fail('Choose a valid game seed.');
   const player = profile(host);
-  return {version: 1, code, seed, revision: 1, turnSequence: 0, turnId: `${code}:0`, phase: 'lobby', hostId: player.id, players: [player], auctionNumber: 0, round: 0, items: [], publicIndex: null, history: [], priority: [], winnerId: null, winningBid: null, receipt: null, ledger: [], endedReason: null};
+  return {version: 1, rulesVersion: E.RULES_VERSION, code, seed, revision: 1, turnSequence: 0, turnId: `${code}:0`, phase: 'lobby', hostId: player.id, players: [player], auctionNumber: 0, round: 0, items: [], publicIndex: null, history: [], priority: [], winnerId: null, winningBid: null, receipt: null, ledger: [], endedReason: null};
 }
 function joinRoom(room, input) {
   validateRoom(room);
   requirePhase(room, ['lobby']);
   const player = profile(input);
+  if ((room.rulesVersion ?? 2) < 3 && ['salvager', 'curator', 'broker'].includes(player.role)) fail('Start a new room to use the expanded roles.');
   if (room.players.some(candidate => candidate.id === player.id)) fail('This player has already joined.');
   if (activePlayers(room).length >= 4) fail('The room already has four players.');
   const draft = clone(room);
@@ -92,7 +94,9 @@ function validateCommand(command) {
     continue: [], finish: [], leave: []
   };
   if (!own(fields, command.type)) fail('Choose a valid room action.');
-  const allowed = ['type', 'turnId', ...fields[command.type]];
+  // Existing clients may omit abilitySlots. An omitted selection never activates
+  // a new role ability automatically on behalf of a player.
+  const allowed = ['type', 'turnId', ...fields[command.type], ...(command.type === 'sell' ? ['abilitySlots'] : [])];
   if (Object.keys(command).some(key => !allowed.includes(key))) fail('Choose a valid room action.');
   if (fields[command.type].some(key => !own(command, key))) fail('Choose a valid room action.');
 }
@@ -121,8 +125,8 @@ function reveal(room) {
   winner.profit = winner.cash - E.STARTING_CASH;
   phase(room, 'dispose');
 }
-function slotsToIds(room, slots) {
-  if (!Array.isArray(slots) || slots.length > 2 || slots.some(slot => !Number.isInteger(slot) || slot < 0 || slot >= room.items.length) || new Set(slots).size !== slots.length) fail('Choose valid processing objects.');
+function slotsToIds(room, slots, limit = 2) {
+  if (!Array.isArray(slots) || slots.length > limit || slots.some(slot => !Number.isInteger(slot) || slot < 0 || slot >= room.items.length) || new Set(slots).size !== slots.length) fail('Choose valid processing objects.');
   return slots.map(slot => room.items[slot].id);
 }
 function applyAction(room, actorId, command) {
@@ -135,6 +139,7 @@ function applyAction(room, actorId, command) {
   if (command.type === 'configure') {
     requirePhase(draft, ['lobby']);
     const next = profile({...player, role: command.role, theme: command.theme});
+    if ((draft.rulesVersion ?? 2) < 3 && ['salvager', 'curator', 'broker'].includes(next.role)) fail('Start a new room to use the expanded roles.');
     if (player.role === next.role && player.theme === next.theme && !player.ready) return room;
     player.role = next.role; player.theme = next.theme; player.ready = false;
   } else if (command.type === 'ready') {
@@ -176,14 +181,17 @@ function applyAction(room, actorId, command) {
     requirePhase(draft, ['dispose']);
     if (draft.winnerId !== player.id) fail('Only the winner can sell this crate.');
     const repairIds = slotsToIds(draft, command.repairSlots), pairIds = slotsToIds(draft, command.pairSlots);
-    if ((player.role !== 'restorer' && repairIds.length) || (player.role !== 'collector' && pairIds.length)) fail('Those processing objects do not match your role.');
+    const abilityIds = slotsToIds(draft, own(command, 'abilitySlots') ? command.abilitySlots : [], 3);
+    const expandedRole = ['salvager', 'curator', 'broker'].includes(player.role);
+    if ((player.role !== 'restorer' && repairIds.length) || (player.role !== 'collector' && pairIds.length) || (!expandedRole && abilityIds.length)) fail('Those processing objects do not match your role.');
     const options = {theme: player.theme};
     if (player.role === 'restorer') options.repairIds = repairIds;
     if (player.role === 'collector') options.pairIds = pairIds;
+    if (expandedRole) options.abilityIds = abilityIds;
     const plan = E.salePlan(player.role, draft.items, command.mode, player.cash, options);
     player.cash += plan.recovery;
     player.profit = player.cash - E.STARTING_CASH;
-    draft.receipt = {paid: draft.winningBid, sale: plan.sale, cost: plan.cost, bonus: plan.bonus, recovery: plan.recovery, profit: plan.recovery - draft.winningBid, cash: player.cash, repairs: plan.repairs.map(id => draft.items.findIndex(item => item.id === id)), pair: plan.pair.map(id => draft.items.findIndex(item => item.id === id))};
+    draft.receipt = {paid: draft.winningBid, sale: plan.sale, cost: plan.cost, bonus: plan.bonus, recovery: plan.recovery, profit: plan.recovery - draft.winningBid, cash: player.cash, repairs: plan.repairs.map(id => draft.items.findIndex(item => item.id === id)), pair: plan.pair.map(id => draft.items.findIndex(item => item.id === id)), ability: (plan.ability || []).map(id => draft.items.findIndex(item => item.id === id))};
     ledgerEntry(draft);
   } else if (command.type === 'continue') {
     requirePhase(draft, ['result']); requireHost(draft, player);
@@ -213,7 +221,7 @@ function publicItem(room, viewer, item, slot) {
   const publicKnown = room.round === 3 && slot === room.publicIndex;
   const privateKnown = viewer.inspected.includes(slot);
   const known = crateOpened || publicKnown || privateKnown;
-  const range = E.catalogFor(item.shape);
+  const range = E.catalogFor(item.shape, room.rulesVersion ?? 2);
   const result = {slot, shape: item.shape, range: {min: range.min, max: range.max}, known, source: crateOpened ? 'Crate opened' : publicKnown ? 'Public reveal' : privateKnown ? 'Private note' : 'Unconfirmed'};
   if (known) {
     for (const key of ['id', 'catalogId', 'name', 'base', 'genuine', 'condition', 'category', 'theme']) result[key] = item[key];
@@ -230,7 +238,7 @@ function viewFor(room, viewerId) {
   const publicCount = room.round >= 2 || opened;
   const publicRepair = room.round === 3 || opened;
   return {
-    code: room.code, revision: room.revision, turnId: room.turnId, phase: room.phase,
+    code: room.code, revision: room.revision, rulesVersion: room.rulesVersion ?? 2, turnId: room.turnId, phase: room.phase,
     hostId: room.hostId, selfId: viewer.id, auctionNumber: room.auctionNumber, round: room.round,
     players: room.players.map(player => ({id: player.id, name: player.name, role: player.role, theme: player.theme, cash: player.cash, profit: player.profit, ready: player.ready, submitted: !!player.bid, active: player.active})),
     self: {id: viewer.id, role: viewer.role, theme: viewer.theme, cash: viewer.cash, inspectionsLeft: viewer.role === 'appraiser' ? Math.max(0, 2 - viewer.inspected.length) : 0, inspected: [...viewer.inspected], bid: clone(viewer.bid), submitted: !!viewer.bid},

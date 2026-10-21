@@ -30,6 +30,9 @@
       visual: cell('assets/catalog-lots-v1.png', 6, 3, column, row)
     };
   }));
+  ['cabinet-clock','cracked-cup','navy-badge','replica-camera','console-radio','railway-map'].forEach((identity,column) => {
+    catalog[identity] = {shape:shapes[column],visual:cell('assets/catalog-expansion-v1.svg',6,1,column,0)};
+  });
 
   // Covered artwork must depend only on the public outline, including before
   // authentication. Do not use an identity to select a covered variant.
@@ -44,15 +47,17 @@
     return entry && entry.shape === shape ? entry.visual : fallback;
   }
 
-  const portraits = Object.fromEntries(['collector', 'restorer', 'appraiser', 'self'].map((role, index) => [
-    role,
-    cell('assets/bidder-portraits-v1.png', 2, 2, index % 2, Math.floor(index / 2))
-  ]));
+  const portraits = Object.fromEntries([
+    'restorer', 'appraiser', 'collector', 'salvager', 'curator', 'broker'
+  ].map(role => [role, cell(`assets/portrait-${role}-v2.png`, 1, 1, 0, 0)]));
+  const fallbackPortrait = cell('assets/bidder-portraits-v1.png', 2, 2, 1, 1);
 
-  function portraitFor(role, self = false) {
-    return self === true || typeof role !== 'string' || !Object.hasOwn(portraits, role)
-      ? portraits.self
-      : portraits[role];
+  function portraitFor(role) {
+    // The chosen role is the character, including for the local player's seat.
+    // Unknown roles from older data retain the original neutral fallback.
+    return typeof role === 'string' && Object.hasOwn(portraits, role)
+      ? portraits[role]
+      : fallbackPortrait;
   }
 
   return Object.freeze({visualFor, portraitFor});

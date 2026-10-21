@@ -5,6 +5,9 @@ The complete game runs at [second-value.abloompixie66.chatgpt.site](https://seco
 - English is the first-visit default. The header language picker supports English, 中文 and Español on the same Site, without reloading or resetting a game. It remembers the player's choice. Explicit `?lang=zh-CN`, `?lang=en` and `?lang=es` links remain supported and take precedence over the saved preference.
 - `/` and `/online.html` open the two-to-four-player game; `/index.html` opens solo practice.
 - Players join with a nickname and room code; no account or ChatGPT sign-in is required.
+- New sessions offer six roles: Restorer, Appraiser, Collector, Salvager, Curator and Antique Dealer. Everyone shares the same bidding actions; each role has one exclusive ability. The catalog now has 24 identities behind six public outlines.
+- Ordinary prices are fixed when a crate is drawn. Salvage, exhibitions and customer sales require explicit target choices, have fees and capped payouts, and show their net difference from ordinary sale before confirmation. Ordinary sale is always available.
+- Rules are locked to the session or room. Existing rules 1/2 saves and rules 2 rooms retain their catalog and economics; start a new table to use the expanded roster.
 - Room state, hashed seat credentials, action replay records and presence live in D1. The same tab can restore its seat after a Worker restart or deployment while the room has not expired.
 - Rooms expire after six hours without authenticated activity. This is session recovery, not a permanent account/history feature.
 - Concurrent requests commit by database storage version. Retried request IDs cannot debit or credit a successful bid or sale twice. Clients receive only their private `viewFor()` projection.
@@ -15,7 +18,7 @@ The complete game runs at [second-value.abloompixie66.chatgpt.site](https://seco
 Future game development and publication use this checkout. The adjacent `auction-game` directory is the original prototype/design reference, and does not need a second hosted deployment. `scripts/sync-game.mjs` records the one-time import; do not rerun it over later game changes.
 
 - `game/client/`: game HTML, JavaScript and styles.
-- `game/engine.cjs`, `game/room-engine.cjs`: authoritative rules, imported without gameplay changes.
+- `game/engine.cjs`, `game/room-engine.cjs`: shared sale rules and authoritative room transitions. `game/client/engine.js` must match the shared engine byte for byte.
 - `public/assets/`: local images, fonts and font licenses.
 - `lib/room-api.mjs`: native Fetch API backed by D1; `db/schema.ts` and `drizzle/` own the schema.
 - `lib/game-site.mjs`: exact game text routes. HTML is deliberately not in public assets, so static hosting cannot redirect `/index.html` to the multiplayer root.

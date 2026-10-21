@@ -15,6 +15,7 @@
   let saleMode = 'special';
   let repairIds = [];
   let pairIds = [];
+  let abilityIds = [];
   let upgraded = false;
   let draftBid = '300';
   let storageAvailable = true;
@@ -31,12 +32,13 @@
       saleMode = saved.saleDraft.mode==='ordinary'?'ordinary':'special';
       repairIds = Array.isArray(saved.saleDraft.repairIds)?saved.saleDraft.repairIds.filter(id=>game.items.some(item=>item.id===id)):[];
       pairIds = Array.isArray(saved.saleDraft.pairIds)?saved.saleDraft.pairIds.filter(id=>game.items.some(item=>item.id===id)):[];
+      abilityIds = Array.isArray(saved.saleDraft.abilityIds)?saved.saleDraft.abilityIds.filter(id=>game.items.some(item=>item.id===id)):[];
     }
     if(game && game.role==='appraiser')saleMode='ordinary';
   } catch { storageAvailable = false; }
 
   function save() {
-    try { localStorage.setItem(STORAGE, JSON.stringify({selectedRole,selectedTheme,session,draftBid,saleDraft:{mode:saleMode,repairIds,pairIds}})); }
+    try { localStorage.setItem(STORAGE, JSON.stringify({selectedRole,selectedTheme,session,draftBid,saleDraft:{mode:saleMode,repairIds,pairIds,abilityIds}})); }
     catch { storageAvailable = false; }
   }
   function start() {
@@ -44,7 +46,7 @@
     session = E.newSession(selectedRole,seed,selectedTheme);game=session.game;resetDraft();upgraded=false;save();render();
   }
   function resetDraft() {
-    saleMode=game.role==='appraiser'?'ordinary':'special';repairIds=[];pairIds=[];draftBid=String(Math.min(300,E.getCash(game)));
+    saleMode=game.role==='appraiser'?'ordinary':'special';repairIds=[];pairIds=[];abilityIds=[];draftBid=String(Math.min(300,E.getCash(game)));
   }
   function act(type,payload={}) {
     E.performSession(session,type,payload);game=session.game;
@@ -84,7 +86,7 @@
   }
   function rolePicker() {
     return `<div class="intro"><div><span class="eyebrow">YOUR EDGE IS A CHOICE</span><h1>Same crate.<br>A different kind of value.</h1><p>Some see damage. Some see a fake. Some see the missing piece. Choose your role and find out what you are willing to pay.</p></div><span class="tag session-tag">CONTINUOUS AUCTIONS · 1,000 STARTING COINS</span></div>
-      <div class="role-grid">${Object.entries(E.ROLES).map(([id,role])=>`<button type="button" class="role-card" data-role="${id}" aria-pressed="${selectedRole===id}" aria-label="Choose ${role.short}"><span class="role-heading"><span class="role-portrait" aria-hidden="true">${sprite(Art.portraitFor(id))}</span><h3>${role.name}</h3></span><p class="gold">${role.tagline}</p><p>${role.passive}</p><span class="skill"><strong>${role.skill}</strong>${role.skillText}</span><p class="risk">The risk: ${role.risk}</p></button>`).join('')}</div>
+      <p class="role-roster-label">Six roles. One shared auction.</p><div class="role-grid expanded-roles">${Object.entries(E.ROLES).map(([id,role])=>`<button type="button" class="role-card" data-role="${id}" aria-pressed="${selectedRole===id}" aria-label="Choose ${role.short}"><span class="role-heading"><span class="role-portrait" aria-hidden="true">${sprite(Art.portraitFor(id))}</span><h3>${role.name}</h3></span><p class="gold">${role.tagline}</p><span class="skill"><strong>${role.skill}</strong><span>${role.passive}</span></span><p class="risk">The risk: ${role.risk}</p></button>`).join('')}</div>
       ${selectedRole==='collector'?`<fieldset class="theme-picker"><legend>Choose your collection theme</legend><p class="small muted">Lock it before the session begins. Keep the same theme for every crate.</p><div class="theme-options">${Object.entries(E.THEMES).map(([id,name])=>`<button type="button" data-theme="${id}" aria-label="${name}" aria-pressed="${selectedTheme===id}"><span>${name}</span><small>${id==='harbor'?'More matching objects, smaller pair bonuses.':'Rarer matches, larger pair bonuses.'}</small></button>`).join('')}</div></fieldset>`:''}
       <div class="bottom-actions"><p>Cash carries between crates. Continue or leave after any settled auction.<br>Your role and collection theme stay locked for the session.</p><button type="button" class="primary" id="start-game">Enter as ${E.ROLES[selectedRole].short} →</button></div><p class="small muted" style="margin-top:14px">These values are a first draft, not balanced competitive rules.</p>${upgraded?'<p class="storage-note">Continuous auctions now carry your cash. Start a new session with the updated rules.</p>':''}${!storageAvailable?'<p class="storage-note">Browser storage is unavailable. This practice will reset if you refresh.</p>':''}`;
   }
@@ -122,7 +124,7 @@
   }
   function catalog() {
     const shapes=[...new Set(game.items.map(item=>item.shape))];
-    return `<details class="catalog"><summary>Public catalog · possible identities and prices</summary>${shapes.map(shape=>{const entry=E.catalogFor(shape);return `<div class="catalog-item"><span>${entry.label}</span><span>${entry.min}–${entry.max}</span></div>${E.catalogItems(game).filter(item=>item.shape===shape).map(item=>`<div class="catalog-definition"><span>${item.name}</span><span>${item.base} base</span><small>${itemAttributes(item)}</small></div>`).join('')}`;}).join('')}<p class="small muted">Ranges cover catalog possibilities, not a guaranteed sale quote for this crate. Role bonuses and workshop fees are separate.</p></details>`;
+    return `<details class="catalog"><summary>Public catalog · possible identities and prices</summary>${shapes.map(shape=>{const entry=E.catalogFor(shape,game);return `<div class="catalog-item"><span>${entry.label}</span><span>${entry.min}–${entry.max}</span></div>${E.catalogItems(game).filter(item=>item.shape===shape).map(item=>`<div class="catalog-definition"><span>${item.name}</span><span>${item.base} base</span><small>${itemAttributes(item)}</small></div>`).join('')}`;}).join('')}<p class="small muted">Ranges cover catalog possibilities, not a guaranteed sale quote for this crate. Role bonuses and workshop fees are separate.</p></details>`;
   }
   function abilityStatus() {
     if(game.role==='appraiser')return `${2-game.inspected.length} / 2 inspections remain for the entire crate.`;
@@ -140,7 +142,7 @@
   }
   function objectCards() {
     return game.items.map((item,index)=>{
-      const info=informationFor(index),range=E.catalogFor(item.shape);
+      const info=informationFor(index),range=E.catalogFor(item.shape,game);
       return `<button type="button" class="object-button ${info.known?'object-known':''}" data-item="${index}" aria-label="Select object ${index+1}" aria-controls="selected-object" aria-pressed="${game.selected===index}"><span class="object-head"><span class="object-letter">${String.fromCharCode(65+index)}</span><span class="object-status ${info.source==='Public reveal'?'public-status':''}">${info.source}</span></span><span class="object-art" aria-hidden="true">${itemArt(item,info.known)}${info.known?`<span class="authenticity-stamp ${item.genuine?'is-genuine':'is-reproduction'}">${item.genuine?'Genuine':'Reproduction'}</span>`:''}</span><span class="object-label">${info.known?item.name:E.SHAPES[item.shape]}</span><span class="object-range"><span>${info.known?'Base price':'Catalog range'}</span><span>${info.known?item.base:range.min+'–'+range.max}</span></span></button>`;
     }).join('');
   }
@@ -149,7 +151,7 @@
     return `<section class="confirmed-notes" aria-label="Confirmed information"><div class="notes-heading"><span class="eyebrow">CONFIRMED INFORMATION</span><span class="small muted">${indices.length} / ${game.items.length} confirmed</span></div>${indices.length?indices.map(index=>{const item=game.items[index],info=informationFor(index);return `<button type="button" class="confirmed-note" data-item="${index}" aria-pressed="${game.selected===index}"><span class="note-letter">${String.fromCharCode(65+index)}</span><span class="note-identity"><span>${item.name}</span><small><span>${info.source}</span> · <span>${item.genuine?'Genuine':'Reproduction'}</span></small></span><span class="note-price"><span>${item.base} base</span></span></button>`;}).join(''):'<p class="small muted">No objects confirmed yet. Catalog ranges describe possibilities, not actual prices.</p>'}</section>`;
   }
   function objectDetail() {
-    const item=game.items[game.selected],info=informationFor(game.selected),range=E.catalogFor(item.shape);
+    const item=game.items[game.selected],info=informationFor(game.selected),range=E.catalogFor(item.shape,game);
     const facts=info.known
       ? `<div><dt>Base price</dt><dd>${money(item.base)}</dd></div><div><dt>Authenticity</dt><dd>${item.genuine?'Genuine':'Reproduction'}</dd></div>`
       : `<div><dt>Catalog range</dt><dd>${range.min}–${range.max}</dd></div><div><dt>Identity</dt><dd>Unconfirmed</dd></div>`;
@@ -193,7 +195,7 @@
       if(!pendingAction)return;
       try {
         if(pendingAction.type==='finish')act('finish');
-        else {act('bid',{amount:pendingAction.amount,pass:pendingAction.pass});saleMode=game.role==='appraiser'?'ordinary':'special';repairIds=[];pairIds=[];}
+        else {act('bid',{amount:pendingAction.amount,pass:pendingAction.pass});saleMode=game.role==='appraiser'?'ordinary':'special';repairIds=[];pairIds=[];abilityIds=[];}
         review.close();save();render();
       } catch(error) {body.querySelector('#review-error').textContent=L.translate(error.message);}
     });
@@ -204,20 +206,20 @@
   }
   function receiptHtml(receipt,preview) {
     const processed=(ids,label)=>ids?.length?`<p class="small muted processing-receipt"><span>${label}</span>${ids.map(id=>`<span style="display:block">${escape(game.items.find(item=>item.id===id).name)}</span>`).join('')}</p>`:'';
-    return `<div class="receipt" aria-live="polite"><span class="eyebrow">${preview?'SALE PREVIEW':'FINAL RECEIPT'} · VIRTUAL COINS</span><div class="receipt-line"><span>Cash before this crate</span><strong>${money(E.getCash(game))}</strong></div><div class="receipt-line"><span>Winning bid</span><strong>${receipt.paid?'−'+money(receipt.paid):'0'}</strong></div><div class="receipt-line"><span>Sale proceeds</span><strong>${signed(receipt.sale)}</strong></div><div class="receipt-line"><span>Collection bonus</span><strong>${signed(receipt.bonus)}</strong></div><div class="receipt-line"><span>Workshop fees</span><strong>${receipt.cost?'−'+money(receipt.cost):'0'}</strong></div>${processed(receipt.repairs,'Repairs selected:')}${processed(receipt.pair,'Collection pair:')}<div class="receipt-profit"><span>${receipt.profit<0?'Crate loss':'Crate profit'}</span><strong class="${receipt.profit<0?'negative':'positive'}">${signed(receipt.profit)}</strong></div><div class="receipt-line"><span>${preview?'Cash after sale':'Cash after this crate'}</span><strong>${money(receipt.cash)}</strong></div></div>`;
+    return `<div class="receipt" aria-live="polite"><span class="eyebrow">${preview?'SALE PREVIEW':'FINAL RECEIPT'} · VIRTUAL COINS</span><div class="receipt-line"><span>Cash before this crate</span><strong>${money(E.getCash(game))}</strong></div><div class="receipt-line"><span>Winning bid</span><strong>${receipt.paid?'−'+money(receipt.paid):'0'}</strong></div><div class="receipt-line"><span>Sale proceeds</span><strong>${signed(receipt.sale)}</strong></div><div class="receipt-line"><span>Ability bonus</span><strong>${signed(receipt.bonus)}</strong></div><div class="receipt-line"><span>Processing fees</span><strong>${receipt.cost?'−'+money(receipt.cost):'0'}</strong></div>${processed(receipt.repairs,'Repairs selected:')}${processed(receipt.pair,'Collection pair:')}${processed(receipt.ability,'Ability selection:')}<div class="receipt-profit"><span>${receipt.profit<0?'Crate loss':'Crate profit'}</span><strong class="${receipt.profit<0?'negative':'positive'}">${signed(receipt.profit)}</strong></div><div class="receipt-line"><span>${preview?'Cash after sale':'Cash after this crate'}</span><strong>${money(receipt.cash)}</strong></div></div>`;
   }
   function disposal() {
     let plan,selectionError='';
-    const options={theme:game.theme,...(game.role==='restorer'?{repairIds}:{pairIds})};
+    const options={theme:game.theme,...saleSelection()};
     const ordinary=E.salePlan(game.role,game.items,'ordinary',E.getCash(game)-game.bid);
     try { plan=E.salePlan(game.role,game.items,saleMode,E.getCash(game)-game.bid,saleMode==='special'?options:{}); }
     catch(error) { selectionError=error.message;plan=ordinary; }
     const preview={...plan,paid:game.bid,profit:plan.recovery-game.bid,cash:E.getCash(game)-game.bid+plan.recovery};
-    const specialLabel=game.role==='restorer'?'Repair selected objects':'Deliver selected collection';
-    const selection=game.role==='restorer'?repairSelection():game.role==='collector'?pairSelection():'';
+    const specialLabel=game.role==='restorer'?'Repair selected objects':game.role==='collector'?'Deliver selected collection':E.ROLES[game.role].skill;
+    const selection=game.role==='restorer'?repairSelection():game.role==='collector'?pairSelection():abilitySelection();
     return `<div class="workbench-head"><div><span class="eyebrow">SOLD TO YOU · ${money(game.bid)} COINS</span><h2 class="lot-title">Choose how to sell</h2></div></div>
-      <div class="auction-layout phase-layout"><section>${truth()}<div class="sale-options">${game.role!=='appraiser'?`<button type="button" data-sale="special" aria-pressed="${saleMode==='special'}" class="sale-option"><span>${specialLabel}<small>${game.role==='restorer'?'Choose up to two repairs. Fees must be funded before each repair.':'Choose one genuine pair in your locked theme, with different identities and categories.'}</small></span></button>`:''}<button type="button" data-sale="ordinary" aria-pressed="${saleMode==='ordinary'}" class="sale-option"><span>Sell at ordinary prices<small>Every role receives the same base prices.</small></span><span>${money(ordinary.recovery)} after fees</span></button></div>${saleMode==='special'?selection:''}<p class="small muted" style="margin-top:15px">All objects are sold now. Your cash carries into the next auction; item storage comes later.</p><details class="previous-bids"><summary>Previous round bids</summary>${historyMarkup()}${participants(true)}</details></section>
-      <aside class="side-panel stage-controls phase-controls"><div class="stage-heading"><span class="eyebrow">03 / PROCESS & SELL</span><h3>Your settlement</h3></div><p>Review processing choices, then settle this crate.</p>${selectionError?'<p class="selection-warning">Complete a valid selection to see its receipt. Ordinary sale totals are shown below.</p>':''}${receiptHtml(preview,true)}<button type="button" class="primary full" id="confirm-sale" ${selectionError?'disabled':''}>Confirm sale & settle crate →</button><p class="action-hint">Your chosen sale can make a profit or a loss. The purchase price is already locked.</p><div id="sale-error" class="error" role="alert">${escape(selectionError)}</div></aside></div>`;
+      <div class="auction-layout phase-layout"><section>${truth()}<div class="sale-options">${game.role!=='appraiser'?`<button type="button" data-sale="special" aria-pressed="${saleMode==='special'}" class="sale-option"><span>${specialLabel}<small>${game.role==='restorer'?'Choose up to two repairs. Fees must be funded before each repair.':game.role==='collector'?'Choose one genuine pair in your locked theme, with different identities and categories.':abilityInstruction()}</small></span></button>`:''}<button type="button" data-sale="ordinary" aria-pressed="${saleMode==='ordinary'}" class="sale-option"><span>Sell at ordinary prices<small>Every role receives the same base prices.</small></span><span>${money(ordinary.recovery)} after fees</span></button></div>${saleMode==='special'?selection:''}<p class="small muted" style="margin-top:15px">All objects are sold now. Your cash carries into the next auction; item storage comes later.</p><details class="previous-bids"><summary>Previous round bids</summary>${historyMarkup()}${participants(true)}</details></section>
+      <aside class="side-panel stage-controls phase-controls"><div class="stage-heading"><span class="eyebrow">03 / PROCESS & SELL</span><h3>Your settlement</h3></div><p>Review processing choices, then settle this crate.</p>${selectionError?'<p class="selection-warning">Complete a valid selection to see its receipt. Ordinary sale totals are shown below.</p>':''}${receiptHtml(preview,true)}${netGainMarkup(plan.recovery-ordinary.recovery)}<button type="button" class="primary full" id="confirm-sale" ${selectionError?'disabled':''}>Confirm sale & settle crate →</button><p class="action-hint">Your chosen sale can make a profit or a loss. The purchase price is already locked.</p><div id="sale-error" class="error" role="alert">${escape(selectionError)}</div></aside></div>`;
   }
   function repairSelection() {
     const eligible=game.items.filter(item=>item.genuine&&item.repair);
@@ -227,6 +229,22 @@
     const eligible=game.items.filter(item=>item.genuine&&item.theme===game.theme);
     return `<section class="processing-selection"><h3>Choose a collection pair</h3><p class="small muted"><span>Locked theme:</span> <span>${E.THEMES[game.theme]}</span></p><p class="selection-count">${pairIds.length} / 2 collection objects selected</p>${eligible.length?eligible.map(item=>`<button type="button" class="processing-object" data-pair="${escape(item.id)}" aria-pressed="${pairIds.includes(item.id)}" aria-label="Select collection: ${escape(item.name)}" ${pairIds.length>=2&&!pairIds.includes(item.id)?'disabled':''}><span>${item.name}</span><small><span>${item.category}</span> · <span>${item.base} base</span></small></button>`).join(''):'<p class="muted small">No genuine objects match your locked theme.</p>'}<p class="small muted">One pair only. Bonus is 25% of the pair’s base prices, rounded down, up to 120. Each object is sold once.</p></section>`;
   }
+  function saleSelection() {
+    return game.role==='restorer'?{repairIds}:game.role==='collector'?{pairIds}:{abilityIds};
+  }
+  function abilityInstruction() {
+    return ({salvager:'Choose up to two reproductions. Each sells for 90, with a 15 processing fee.',curator:'Choose exactly three genuine, intact objects from different categories. Pay one 25 fee.',broker:'Choose one genuine, intact object. Packing and delivery cost 25; a low-value customer sale can lose money.'})[game.role]||'';
+  }
+  function netGainMarkup(delta) {
+    return `<div class="ability-net"><span>Net gain vs ordinary sale</span><strong class="${delta<0?'negative':'positive'}">${signed(delta)}</strong></div>`;
+  }
+  function abilitySelection() {
+    if(!['salvager','curator','broker'].includes(game.role))return '';
+    const eligible=game.items.filter(item=>E.abilityEligibility(game.role,item));
+    const limit=E.abilitySelectionLimit(game.role);
+    const hint=item=>game.role==='salvager'?`<span>Parts sale price</span> 90 · <span>Parts fee</span> 15 · <span>Net parts gain</span> <strong class="${75-item.base<0?'negative':'positive'}">${signed(75-item.base)}</strong>`:game.role==='curator'?`<span>${item.category}</span> · <span>Exhibition bonus</span> +${Math.min(40,Math.floor(item.base/5))}`:`<span>Customer premium</span> +${Math.min(90,Math.floor(item.base*.3))} · <span>Packing &amp; delivery</span> 25 · <span>Net gain vs ordinary sale</span> <strong class="${Math.min(90,Math.floor(item.base*.3))-25<0?'negative':'positive'}">${signed(Math.min(90,Math.floor(item.base*.3))-25)}</strong>`;
+    return `<section class="processing-selection"><h3>${E.ROLES[game.role].skill}</h3><p class="small muted">${abilityInstruction()}</p>${game.role==='curator'?'<p class="small muted">Exhibition bonus: 20% per object, rounded down, up to 40 each.</p>':game.role==='broker'?'<p class="small muted">Customer premium: 30% of base price, rounded down, up to 90.</p>':''}<p class="selection-count"><span>${abilityIds.length} / ${limit}</span> <span>selected</span></p>${eligible.map(item=>`<button type="button" class="processing-object" data-ability="${escape(item.id)}" aria-pressed="${abilityIds.includes(item.id)}" aria-label="Select ability object: ${escape(item.name)}" ${abilityIds.length>=limit&&!abilityIds.includes(item.id)?'disabled':''}><span>${item.name}</span><small>${hint(item)}</small></button>`).join('')}${!eligible.length?'<p class="muted small">No eligible objects for this ability. Sell at ordinary prices.</p>':''}${!abilityIds.length?'<p class="small muted">No objects selected. Ordinary sale applies with no ability fee.</p>':''}<p class="small muted">Unselected objects fund fees first; selected objects cannot fund their own processing.</p><p class="small muted">Nothing is selected automatically. Compare the net gain before confirming.</p></section>`;
+  }
   function result() {
     const board=E.sessionStandings(session),won=game.winner==='you';
     const outcome=!game.winner?'The final round had no bids. Nothing was charged.':won?`You bought the crate for ${money(game.bid)} and ${game.receipt.profit<0?'lost':'made'} ${money(Math.abs(game.receipt.profit))}.`:game.passed?'You passed this crate. Your cash is unchanged.':`${bidderName(game.winner)} bought the crate. Your cash is unchanged.`;
@@ -234,7 +252,7 @@
     const actions=session.ended?'<button type="button" class="primary" id="new-session">Start a new session →</button><button type="button" id="change-role">Choose a different role</button>':'<button type="button" class="primary" id="continue-session">Continue to the next auction →</button><button type="button" id="finish-session">Leave & settle session</button>';
     return `<div class="result-heading"><span class="eyebrow">${session.ended?'SESSION FINISHED':'AUCTION SETTLED'}</span><h1>${session.ended?'Your session is settled.':'One crate down. Your next decision.'}</h1><p>${outcome}</p></div>
       <div class="auction-layout phase-layout"><section><h3>${session.ended?'Final standings':'Current standings'}</h3><p class="small muted">Ranking uses cumulative cash across this session.</p><div class="score-list">${board.map(player=>`<div class="score-row ${player.id==='you'?'self':''}" ${player.id==='you'?'aria-label="Your session standing"':''}><span class="score-rank">${1+board.filter(other=>other.cash>player.cash).length}</span><span class="score-name">${player.name}<small>${E.ROLES[player.role].short}${player.id==='you'?' · You':''}</small></span><span class="score-cash">${money(player.cash)}<small class="${player.profit<0?'negative':'positive'}" style="display:block;font-size:11px;text-align:right">${signed(player.profit)} profit</small></span></div>`).join('')}</div>${ledgerHtml()}<details class="catalog"><summary>Reveal this crate & all bids</summary>${truth()}${historyMarkup()}</details></section>
-      <aside class="side-panel stage-controls phase-controls"><div class="stage-heading"><span class="eyebrow">04 / SESSION RESULT</span><h3>Next move</h3></div><div class="session-total"><div class="receipt-line"><span>Current cash</span><strong>${money(session.cash)}</strong></div><div class="receipt-line"><span>Total profit</span><strong class="${total<0?'negative':'positive'}">${signed(total)}</strong></div><p>${session.history.length} ${session.history.length===1?'crate':'crates'} settled.</p></div><p>${session.ended?'Your final cash includes every completed auction. No extra payout is added.':'Carry your cash into another auction, or leave with your current balance.'}</p><div class="restart-row session-decisions">${actions}</div><p class="action-hint">${session.ended?'A new session starts everyone at 1,000 coins. This session’s result stays final.':'The next crate has fresh objects and ability uses. Everyone keeps their own current cash.'}</p><div id="session-error" class="error" role="alert"></div><details class="latest-receipt"><summary>Latest crate receipt</summary>${receiptHtml(game.receipt,false)}<p>Crate profit = sale proceeds + collection bonus − winning bid − workshop fees.</p></details></aside></div>`;
+      <aside class="side-panel stage-controls phase-controls"><div class="stage-heading"><span class="eyebrow">04 / SESSION RESULT</span><h3>Next move</h3></div><div class="session-total"><div class="receipt-line"><span>Current cash</span><strong>${money(session.cash)}</strong></div><div class="receipt-line"><span>Total profit</span><strong class="${total<0?'negative':'positive'}">${signed(total)}</strong></div><p>${session.history.length} ${session.history.length===1?'crate':'crates'} settled.</p></div><p>${session.ended?'Your final cash includes every completed auction. No extra payout is added.':'Carry your cash into another auction, or leave with your current balance.'}</p><div class="restart-row session-decisions">${actions}</div><p class="action-hint">${session.ended?'A new session starts everyone at 1,000 coins. This session’s result stays final.':'The next crate has fresh objects and ability uses. Everyone keeps their own current cash.'}</p><div id="session-error" class="error" role="alert"></div><details class="latest-receipt"><summary>Latest crate receipt</summary>${receiptHtml(game.receipt,false)}<p>Crate profit = sale proceeds + ability bonus − winning bid − processing fees.</p></details></aside></div>`;
   }
   function ledgerHtml() {
     return `<details class="catalog session-ledger"><summary>Session ledger · ${session.history.length} ${session.history.length===1?'crate':'crates'}</summary><div class="ledger-row ledger-header"><span>Auction</span><span>Buyer</span><span>Winning bid</span><span>Your profit</span><span>Your cash</span></div>${session.history.map(record=>`<div class="ledger-row"><span>${record.auctionNumber}</span><span>${record.winner?bidderName(record.winner):'No sale'}</span><span>${money(record.paid)}</span><span class="${record.profit<0?'negative':'positive'}">${signed(record.profit)}</span><span>${money(record.cash)}</span></div>`).join('')}</details>`;
@@ -277,7 +295,8 @@
     main.querySelectorAll('[data-sale]').forEach(button=>button.addEventListener('click',()=>{saleMode=button.dataset.sale;save();render();}));
     main.querySelectorAll('[data-repair]').forEach(button=>button.addEventListener('click',()=>{const id=button.dataset.repair;repairIds=repairIds.includes(id)?repairIds.filter(value=>value!==id):[...repairIds,id];save();render();}));
     main.querySelectorAll('[data-pair]').forEach(button=>button.addEventListener('click',()=>{const id=button.dataset.pair;pairIds=pairIds.includes(id)?pairIds.filter(value=>value!==id):[...pairIds,id];save();render();}));
-    main.querySelector('#confirm-sale')?.addEventListener('click',()=>{try{const selection=saleMode==='ordinary'?{}:game.role==='restorer'?{repairIds}:{pairIds};act('sell',{mode:saleMode,selection});save();render();}catch(error){main.querySelector('#sale-error').textContent=L.translate(error.message);}});
+    main.querySelectorAll('[data-ability]').forEach(button=>button.addEventListener('click',()=>{const id=button.dataset.ability;abilityIds=abilityIds.includes(id)?abilityIds.filter(value=>value!==id):[...abilityIds,id];save();render();main.querySelector(`[data-ability="${id}"]`)?.focus({preventScroll:true});}));
+    main.querySelector('#confirm-sale')?.addEventListener('click',()=>{try{const selection=saleMode==='ordinary'?{}:saleSelection();act('sell',{mode:saleMode,selection});save();render();}catch(error){main.querySelector('#sale-error').textContent=L.translate(error.message);}});
     main.querySelector('#new-session')?.addEventListener('click',start);
     main.querySelector('#continue-session')?.addEventListener('click',()=>{try{act('continue');resetDraft();save();render();}catch(error){main.querySelector('#session-error').textContent=L.translate(error.message);}});
     main.querySelector('#finish-session')?.addEventListener('click',()=>reviewAction({type:'finish'}));

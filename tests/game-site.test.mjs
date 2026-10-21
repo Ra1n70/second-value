@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile, readdir} from 'node:fs/promises';
-import {createHash} from 'node:crypto';
 import {createGameSite} from '../lib/game-site.mjs';
 
 const dir = new URL('../game/client/', import.meta.url);
@@ -23,8 +22,8 @@ test('multiplayer home and solo practice are independent documents with English 
   assert.match(pages['i18n.js'], /zh-CN/);
 });
 
-test('all referenced scripts and styles are local and served with proper MIME; gameplay rules remain unchanged', async () => {
-  const source = JSON.parse(await readFile(new URL('../game/source.json', import.meta.url)));
+test('all referenced scripts and styles are local and served with proper MIME; client and authoritative rules agree', async () => {
+  const authoritative = await readFile(new URL('../game/engine.cjs', import.meta.url), 'utf8');
   for (const html of [pages['online.html'], pages['index.html']]) {
     for (const [,file] of html.matchAll(/(?:src|href)="([^"?#]+\.(?:js|css))"/g)) {
       assert.ok(Object.hasOwn(pages,file), file);
@@ -32,7 +31,7 @@ test('all referenced scripts and styles are local and served with proper MIME; g
       assert.equal(response.status, 200);
       const text = await response.text();
       assert.equal(text, pages[file]);
-      if (file === 'engine.js') assert.equal(createHash('sha256').update(text).digest('hex'), source.files[file]);
+      if (file === 'engine.js') assert.equal(text, authoritative);
       assert.match(response.headers.get('Content-Type'), file.endsWith('js') ? /javascript/ : /css/);
       assert.equal(response.headers.get('Cache-Control'), 'no-store');
       assert.doesNotMatch(text, /second-value\.onrender\.com/);
