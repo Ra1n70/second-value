@@ -1,6 +1,9 @@
 (() => {
   'use strict';
   const E = window.SecondValue, Art = window.SecondValueArt, L = window.SecondValueOnlineLocale;
+  const Show = window.SecondValueShow;
+  const Notes = window.SecondValueNotebook;
+  const Recovery = window.SecondValueRecovery, Tutorial = window.SecondValueTutorial;
   const main = document.getElementById('online-game'), review = document.getElementById('online-review');
   const STORAGE = 'second-value-online-seat-v1';
   const money = value => Number(value || 0).toLocaleString('en-US');
@@ -10,6 +13,9 @@
   let timer = null;
   let syncEpoch = 0;
   let pendingReview = null;
+  let presenceAnchor = null;
+  let lastRoomUpdate = performance.now();
+  let renderedTurn = null;
   function persist() {
     try {
       if (state.credentials) sessionStorage.setItem(STORAGE, JSON.stringify({...state.credentials,draftBid:state.draftBid,draftTurn:state.draftTurn,selected:state.selected,saleTurn:state.saleTurn,saleMode:state.saleMode,repairSlots:state.repairSlots,pairSlots:state.pairSlots,abilitySlots:state.abilitySlots}));
@@ -44,7 +50,7 @@
     const view = state.view;
     if (!view.reservePrice) return '';
     const unable = view.self.cash < minimumBid();
-    return `<section class="auction-reserve ${unable ? 'is-unaffordable' : ''}" aria-label="Auction-house reserve"><div class="reserve-amount"><span>Auction-house reserve</span><strong>${money(view.reservePrice)}</strong></div><div class="reserve-copy"><span>Minimum bid · fixed for this crate</span><small>${unable ? 'Your cash is below the reserve. You can pass this round.' : 'A winning bid must meet the reserve. This amount stays fixed for all three rounds.'}</small></div></section>`;
+    return `<details class="auction-reserve reserve-compact ${unable ? 'is-unaffordable' : ''}"><summary><span>Auction-house reserve</span><strong>${money(view.reservePrice)}</strong></summary><div class="reserve-explanation"><strong>Minimum bid · fixed for this crate</strong><p>${unable ? 'Your cash is below the reserve. You can pass this round.' : 'A winning bid must meet the reserve. This amount stays fixed for all three rounds.'}</p></div></details>`;
   }
   function setConnection(message) {
     const changed = state.connection !== message;
@@ -59,6 +65,8 @@
     clearTimeout(timer); timer = null;
     state.credentials = null; state.view = null; state.draftTurn = null; state.saleTurn = null;
     state.error = ''; state.transientError = false; state.busy = false; state.bidOpen = false; persist();
+    presenceAnchor = null;
+    lastRoomUpdate = performance.now();
     if (review.open) review.close();
     setConnection('MULTIPLAYER'); render();
   }
@@ -68,6 +76,9 @@
     if (!view || !state.credentials || view.code !== state.credentials.code) return;
     if (state.view && view.revision < state.view.revision) return;
     const previous = state.view;
+    const receivedAt = performance.now();
+    presenceAnchor = {serverNow:Number.isFinite(view.serverNow) ? view.serverNow : Date.now(), receivedAt};
+    lastRoomUpdate = receivedAt;
     if (state.draftTurn !== view.turnId) {
       state.draftTurn = view.turnId;
       state.draftBid = String(Math.max(minimumBid(view),Math.min(300,view.self.cash)));
@@ -82,7 +93,9 @@
     state.view = view;
     if (view.phase !== 'auction' && pendingReview && ['bid','withdraw'].includes(pendingReview.type) && review.open) review.close();
     persist();
-    if (JSON.stringify(previous) !== JSON.stringify(view)) render();
+    // A server clock heartbeat must not replace a bid input, review, or notebook.
+    if (Recovery.stableSignature(previous) !== Recovery.stableSignature(view)) render();
+    else updateRecoveryClocks();
   }
   function handleError(error, fromPoll = false) {
     if (error.status === 401 || error.status === 404) {
@@ -149,11 +162,28 @@
     finally { state.busy = false; render(); if (state.credentials) poll(); }
   }
   function entry() {
-    return `<section class="online-entry"><div><span class="eyebrow">SHARE A TABLE</span><h1><span>Your friends.</span><br><span>Their secret bids.</span></h1><p>Invite your crew to the Old Harbor. One shared crate, different talents, and a reason to think twice before raising your paddle.</p><div class="entry-badges"><span>2–4 players</span><span>Room code</span><span>No chat required</span></div></div><section class="online-paper"><h2>Take a seat</h2><p class="small">Create a table, or join your friends.</p><form class="online-form" id="online-entry-form"><label for="online-name">Your nickname<input id="online-name" name="nickname" autocomplete="nickname" maxlength="40" value="${escape(state.name)}" placeholder="e.g. SilverFox" required></label><button type="button" class="primary" id="online-create">Create a room</button><span class="entry-divider">or join a room</span><label for="online-room-code">Room code</label><div class="online-join-row"><input id="online-room-code" name="room" maxlength="8" value="${escape(state.roomCode)}" placeholder="Enter room code" aria-label="Room code" autocomplete="off" autocapitalize="characters" spellcheck="false"><button type="submit">Join room</button></div><small>Your name stays visible at this table. No account needed.</small></form></section></section>`;
+    return `<section class="online-entry"><div><span class="eyebrow">SHARE A TABLE</span><h1><span>Your friends.</span><br><span>Their secret bids.</span></h1><p>Invite your crew to the Old Harbor. One shared crate, different talents, and a reason to think twice before raising your paddle.</p><div class="entry-badges"><span>2–4 players</span><span>Room code</span><span>No chat required</span></div>${Tutorial.buttonMarkup()}</div><section class="online-paper"><h2>Take a seat</h2><p class="small">Create a table, or join your friends.</p><form class="online-form" id="online-entry-form"><label for="online-name">Your nickname<input id="online-name" name="nickname" autocomplete="nickname" maxlength="40" value="${escape(state.name)}" placeholder="e.g. SilverFox" required></label><button type="button" class="primary" id="online-create">Create a room</button><span class="entry-divider">or join a room</span><label for="online-room-code">Room code</label><div class="online-join-row"><input id="online-room-code" name="room" maxlength="8" value="${escape(state.roomCode)}" placeholder="Enter room code" aria-label="Room code" autocomplete="off" autocapitalize="characters" spellcheck="false"><button type="submit">Join room</button></div><small>Your name stays visible at this table. No account needed.</small></form></section></section>`;
   }
   function toolbar(inGame = false) {
     const view = state.view;
     return `<div class="online-room-toolbar ${inGame ? 'in-game-toolbar' : ''}"><div class="online-room-heading"><span class="eyebrow">Room</span><strong class="online-room-code" data-no-localize>${escape(view.code)}</strong><span class="small muted">${view.players.filter(player => player.active).length} / 4 players</span></div><div class="toolbar-actions"><button type="button" id="online-copy">Copy invite</button>${view.can.leave ? '<button type="button" class="text-button" id="online-leave">Leave room</button>' : ''}</div></div>`;
+  }
+  function recoveryPanel() {
+    const view = state.view;
+    const uncertain = state.connection !== 'Connected';
+    const offline = uncertain ? [] : view?.players.filter(player => player.active !== false && player.connected === false) || [];
+    if (!uncertain && !offline.length) return '';
+    return `<section class="room-recovery ${offline.length ? 'has-offline' : ''} ${uncertain ? 'is-uncertain' : ''}" aria-label="Room recovery">${offline.length || uncertain ? '<strong class="room-recovery-heading">Room recovery</strong>' : ''}${uncertain ? `<p>Your connection is interrupted. Other players’ status may be out of date.</p>${!view ? '<p class="room-recovery-time"><span>Without room updates for</span> <time data-room-update-clock data-no-localize>0:00</time></p>' : ''}` : offline.length ? `<p>The room reports these players as offline.</p><ul class="room-recovery-list">${offline.map(player => `<li><strong>${userName(player)}</strong><span class="room-recovery-time">${Number.isFinite(player.offlineSince) ? `<span>Offline for</span> <time data-offline-since="${player.offlineSince}" data-no-localize>0:00</time>` : '<span>Offline time unavailable</span>'}</span><span class="room-recovery-reason">${Recovery.reason(view,player)}</span></li>`).join('')}</ul>` : ''}<details class="room-recovery-guide" id="room-recovery-guide"><summary>How to return to this room</summary><ol><li>Return in the original browser tab, then refresh it or retry the connection.</li><li>A room code alone cannot restore your previous seat in a new tab.</li><li>Rooms expire after six hours with no player activity.</li><li>Offline status begins after 15 seconds without a room update.</li><li>Bids, sales and host actions never happen automatically while someone is offline.</li></ol></details></section>`;
+  }
+  function updateRecoveryClocks() {
+    const monotonicNow = performance.now();
+    const serverNow = presenceAnchor ? presenceAnchor.serverNow + Math.max(0, monotonicNow - presenceAnchor.receivedAt) : null;
+    for (const element of main.querySelectorAll('[data-offline-since]')) {
+      element.textContent = Recovery.clock(Recovery.elapsed(Number(element.dataset.offlineSince),serverNow));
+    }
+    for (const element of main.querySelectorAll('[data-room-update-clock]')) {
+      element.textContent = Recovery.clock(Recovery.elapsed(lastRoomUpdate,monotonicNow));
+    }
   }
   function lobby() {
     const view = state.view, me = selfPlayer();
@@ -203,7 +233,7 @@
   function auction() {
     const view = state.view;
     const next = view.round === 1 ? 'If no sale: next round reveals the genuine count.' : view.round === 2 ? 'If no sale: next round reveals one identity and the repairable count.' : 'Final round: the highest bid wins. Ties follow the published priority.';
-    return `<div class="workbench-head"><div><h2 class="lot-title">Shared auction table</h2><span class="round-preview">${next}</span></div><span class="tag">${view.players.filter(player => player.submitted).length} / ${view.players.filter(player => player.active).length} submitted</span></div>${reserveNotice()}<div class="workbench-grid"><section class="auction-table-column"><div class="crate"><div class="crate-top"><span>One crate / six objects</span><span>Choose an object to see its details.</span></div><div class="objects">${cards()}</div><a class="mobile-detail-link" href="#online-selected-object">Selected object details ↓</a></div></section><aside class="workbench-sidebar">${dossier()}</aside></div>${dock()}${references()}`;
+    return `<div class="workbench-head"><div><h2 class="lot-title">Shared auction table</h2><span class="round-preview">${next}</span></div><div class="workbench-tools">${reserveNotice()}${Notes.buttonMarkup()}<span class="tag">${view.players.filter(player => player.submitted).length} / ${view.players.filter(player => player.active).length} submitted</span></div></div><div class="workbench-grid"><section class="auction-table-column"><div class="crate"><div class="crate-top"><span>One crate / six objects</span><span>Choose an object to see its details.</span></div><div class="objects">${cards()}</div><a class="mobile-detail-link" href="#online-selected-object">Selected object details ↓</a></div></section><aside class="workbench-sidebar">${dossier()}</aside></div>${dock()}${references()}`;
   }
   function historyTable() {
     const view = state.view, players = view.players;
@@ -211,7 +241,7 @@
   }
   function roundSummary() {
     const view = state.view, last = view.history.at(-1);
-    return `${reserveNotice()}<div class="online-reveal"><section class="reveal-main"><span class="eyebrow">Bids revealed</span><h2>No hammer. Not yet.</h2><p class="reveal-description">This round did not sell. All cash stays unchanged.</p>${historyTable()}<p class="small muted">Leading bid: ${money(last?.highest)}.</p><p class="small muted">Runner-up: ${money(last?.second)}.</p><p class="small muted">${last?.reservePrice&&last.highest<last.reservePrice?'No bid met the reserve. Nobody pays.':`Required for early sale: ${money(last?.required)}.`}</p></section><aside class="online-paper"><h3>Waiting for the next round</h3><p class="small">${view.round === 1 ? 'If no sale: next round reveals the genuine count.' : 'If no sale: next round reveals one identity and the repairable count.'}</p>${view.selfId === view.hostId ? `<button type="button" class="primary" id="online-next" ${view.can.next ? '' : 'disabled'}>Open next round</button>` : '<p class="small">The host opens the next round.</p>'}</aside></div>`;
+    return `<div class="workbench-head"><div><span class="eyebrow">Bids revealed</span><h2 class="lot-title">No hammer. Not yet.</h2></div><div class="workbench-tools">${reserveNotice()}${Notes.buttonMarkup()}</div></div><div class="online-reveal"><section class="reveal-main"><p class="reveal-description">This round did not sell. All cash stays unchanged.</p>${historyTable()}<p class="small muted">Leading bid: ${money(last?.highest)}.</p><p class="small muted">Runner-up: ${money(last?.second)}.</p><p class="small muted">${last?.reservePrice&&last.highest<last.reservePrice?'No bid met the reserve. Nobody pays.':`Required for early sale: ${money(last?.required)}.`}</p></section><aside class="online-paper"><h3>Waiting for the next round</h3><p class="small">${view.round === 1 ? 'If no sale: next round reveals the genuine count.' : 'If no sale: next round reveals one identity and the repairable count.'}</p>${view.selfId === view.hostId ? `<button type="button" class="primary" id="online-next" ${view.can.next ? '' : 'disabled'}>Open next round</button>` : '<p class="small">The host opens the next round.</p>'}</aside></div>`;
   }
   function truth() {
     return `<div class="online-truth-grid">${state.view.lots.map(lot => `<article class="online-truth-card"><div class="truth-art" aria-hidden="true">${art(lot)}</div><span class="eyebrow">Object ${letter(lot.slot)}</span><h3>${lot.name}</h3><p>${attributes(lot)}</p><strong><span>Base price</span> ${money(lot.base)}</strong></article>`).join('')}</div>`;
@@ -279,7 +309,8 @@
     return `<div class="online-reveal"><section class="reveal-main"><span class="eyebrow">${ended ? 'Session finished' : 'Crate settled'}</span><h2>${ended ? 'Final standings' : 'Crate settled'}</h2><p class="reveal-description">${ended ? 'Ranked by current cash.' : 'You can leave after this settled crate.'}</p>${!ended && !view.winnerId && view.reservePrice ? '<p class="small muted">No bid met the reserve. Nobody pays.</p>' : ''}${scoreboard()}${sessionLedger()}${view.history.length ? `<details class="online-reference"><summary>Public bid history</summary>${historyTable()}</details>` : ''}</section><aside class="online-paper">${view.receipt && view.winnerId === view.selfId ? receiptMarkup(view.receipt) : `<h3>${ended ? 'Session finished' : 'Your next move'}</h3><p class="small"><span>Your cash</span> <strong>${money(view.self.cash)}</strong></p><p class="small"><span>Cash change</span> <strong>${signed(me.profit)}</strong></p>`}${ended ? '<button type="button" class="primary" id="online-return">Return to rooms</button>' : `<button type="button" id="online-ready" class="${me.ready ? 'secondary' : 'primary'}" ${view.can.ready ? '' : 'disabled'}>${me.ready ? 'Change my choice' : 'Ready for another crate'}</button>${view.hostId === view.selfId ? `<button type="button" class="primary" id="online-continue" ${view.can.continue ? '' : 'disabled'}>Continue auction</button><button type="button" class="text-button" id="online-finish" ${view.can.finish ? '' : 'disabled'}>Finish session</button>` : ''}${waitingFor(view.players.filter(player => player.active && !player.ready))}<p class="small" style="margin-top:14px">Everyone must be ready before the host opens another crate.</p>`}</aside></div>`;
   }
   function render() {
-    const ledgerOpen = Boolean(main.querySelector('#online-session-ledger')?.open);
+    const details = [...main.querySelectorAll('details')].map((element,index) => ({id:element.id,className:element.className,index,open:element.open}));
+    const previousTurn = renderedTurn;
     const active = document.activeElement;
     const focusId = main.contains(active) ? active.id : null;
     const selection = focusId && 'selectionStart' in active ? {start:active.selectionStart,end:active.selectionEnd} : null;
@@ -289,20 +320,40 @@
     document.body.dataset.phase = view?.phase || 'entrance';
     let body;
     if (!state.credentials) body = entry();
-    else if (!view) body = '<section class="online-entry"><div><span class="eyebrow">Connecting…</span><h1>Take a seat</h1><p>Connection lost. Retrying automatically; your seat is saved.</p></div><section class="online-paper"><button type="button" class="primary" id="online-reconnect">Reconnect</button><button type="button" class="text-button" id="online-return">Back to entrance</button></section></section>';
-    else if (view.phase === 'lobby') body = lobby();
-    else body = `${toolbar(true)}${status()}${seats()}${view.players.some(player => player.active && !player.connected) ? '<p class="online-notice">Someone is disconnected. Keep this room open while they return in their original tab.</p>' : ''}${({auction, 'round-summary':roundSummary, dispose:disposal, result, ended:result})[view.phase]()}`;
+    else if (!view) body = recoveryPanel() + '<section class="online-entry"><div><span class="eyebrow">Connecting…</span><h1>Take a seat</h1><p>Connection lost. Retrying automatically; your seat is saved.</p></div><section class="online-paper"><button type="button" class="primary" id="online-reconnect">Reconnect</button><button type="button" class="text-button" id="online-return">Back to entrance</button></section></section>';
+    else if (view.phase === 'lobby') body = `${recoveryPanel()}${lobby()}`;
+    else body = `${toolbar(true)}${status()}${seats()}${['auction','round-summary'].includes(view.phase)?Show.sourceMarkup(view.sourceId,E.SOURCES):''}${recoveryPanel()}${['result','ended'].includes(view.phase)?Show.valuationMarkup(view.valuation):''}${({auction, 'round-summary':roundSummary, dispose:disposal, result, ended:result})[view.phase]()}`;
     const reconnecting = Boolean(state.credentials && state.view && state.connection !== 'Connected');
-    main.innerHTML = `${state.error ? `<div class="online-error-banner" role="alert">${escape(state.error)}</div>` : ''}${reconnecting ? '<section class="online-network-banner" role="status"><div><strong>Reconnecting to the room…</strong><p>Your last room view and draft are kept. Wait for a fresh update before submitting.</p></div><button type="button" id="online-reconnect">Retry connection</button></section>' : ''}${body}`;
-    if (ledgerOpen && main.querySelector('#online-session-ledger')) main.querySelector('#online-session-ledger').open = true;
+    main.innerHTML = `${state.error ? `<div class="online-error-banner" role="alert">${escape(state.error)}</div>` : ''}${reconnecting ? '<section class="online-network-banner" role="status"><div><strong>Reconnecting to the room…</strong><p>Your last room view and draft are kept. Wait for a fresh update before submitting.</p><span class="room-recovery-time"><span>Without room updates for</span> <time data-room-update-clock data-no-localize>0:00</time></span></div><button type="button" id="online-reconnect">Retry connection</button></section>' : ''}${body}`;
+    const newDetails = [...main.querySelectorAll('details')];
+    for (const saved of details) {
+      const replacement = saved.id ? newDetails.find(element => element.id === saved.id)
+        : previousTurn === view?.turnId && newDetails[saved.index]?.className === saved.className ? newDetails[saved.index] : null;
+      if (replacement) replacement.open = saved.open;
+    }
+    renderedTurn = view?.turnId ?? null;
     L.localize(main);
     bind();
+    Tutorial.bind(document);
+    updateRecoveryClocks();
+    let noteStorage;
+    try { noteStorage=window.sessionStorage; } catch { /* Notes still work in memory. */ }
+    Notes.bind(main,{key:view&&view.auctionNumber>0?`room:${view.code}:${view.selfId}:${view.auctionNumber}`:null,storage:noteStorage,scope:'tab',lots:view?.lots.map(lot=>({slot:lot.slot,label:lot.known?lot.name:E.SHAPES[lot.shape],known:lot.known,source:lot.source,range:lot.range,...(lot.known?{base:lot.base,genuine:lot.genuine,condition:lot.condition}:{})}))||[]});
     if (state.busy) main.querySelectorAll('button,input').forEach(element => element.disabled = true);
     if (reconnecting) main.querySelectorAll('#online-ready,#online-start,#online-next,#online-continue,#online-finish,#online-leave,#online-inspect,#online-withdraw,#online-sell,#online-pass,#online-bid-form button[type="submit"],[data-online-role],[data-online-theme]').forEach(element => element.disabled = true);
     if (focusId) {
       const replacement = document.getElementById(focusId);
       if (replacement && !replacement.disabled) { replacement.focus({preventScroll:true}); if (selection && selection.start !== null) { try { replacement.setSelectionRange(selection.start,selection.end); } catch {} } }
     }
+    showCurrentScene();
+  }
+  function showCurrentScene() {
+    const view=state.view;
+    if(!view || view.phase==='lobby' || state.busy)return;
+    const last=view.history.at(-1),player=playerById(view.winnerId),settled=['result','ended'].includes(view.phase);
+    const event=view.phase==='round-summary'?'round':view.phase==='dispose'?'hammer':settled?(view.winnerId?'settled':'round'):null;
+    const scenePhase=view.phase==='ended'?'result':view.phase;
+    Show.present(main,{key:`room:${view.code}:${view.auctionNumber}:${view.round}:${scenePhase}`,event,bids:last?.bids,winnerName:player?.name||'',winningBid:view.winningBid,selfProfit:settled&&view.winnerId===view.selfId?view.receipt?.profit:null});
   }
   function updateBid(value) {
     state.draftBid = String(value); persist();
@@ -378,6 +429,7 @@
     on('#online-sell','click',() => command('sell',{mode:state.saleMode,repairSlots:state.saleMode === 'special' ? state.repairSlots : [],pairSlots:state.saleMode === 'special' ? state.pairSlots : [],abilitySlots:state.saleMode === 'special' ? state.abilitySlots : []}));
   }
   document.getElementById('online-help-button').addEventListener('click', () => document.getElementById('online-help').showModal());
+  Show.bindSoundToggle(document.getElementById('auction-sound'));
   document.getElementById('online-close-help').addEventListener('click', () => document.getElementById('online-help').close());
   review.addEventListener('close', () => { pendingReview = null; });
   document.addEventListener('visibilitychange', () => { if (!document.hidden && state.credentials && !state.busy && !state.polling) poll(); });
@@ -391,6 +443,7 @@
     document.getElementById('practice-link').href = 'index.html?lang='+encodeURIComponent(L.language);
     document.querySelector('.wordmark').href = 'online.html?lang='+encodeURIComponent(L.language);
   });
+  setInterval(updateRecoveryClocks, 1000);
   L.localize(document.body); render();
   if (state.credentials) poll(); else setConnection('MULTIPLAYER');
 })();

@@ -16,11 +16,19 @@
   <link rel="stylesheet" href="online.css">
   <link rel="stylesheet" href="language-switcher.css">
   <link rel="stylesheet" href="roles.css">
+  <link rel="stylesheet" href="auction-show.css">
+  <link rel="stylesheet" href="notebook.css">
+  <link rel="stylesheet" href="tutorial.css">
+  <link rel="stylesheet" href="recovery.css">
   <script defer src="engine.js"></script>
   <script defer src="locale-es.js"></script>
   <script defer src="i18n.js"></script>
   <script defer src="art.js"></script>
+  <script defer src="auction-show.js"></script>
+  <script defer src="notebook.js"></script>
   <script defer src="online-locale.js"></script>
+  <script defer src="tutorial.js"></script>
+  <script defer src="recovery.js"></script>
   <script defer src="room-transport.js"></script>
   <script defer src="online.js"></script>
   <script defer src="language-switcher.js"></script>
@@ -29,7 +37,7 @@
   <div class="app-shell">
     <header class="site-header">
       <a class="wordmark" href="online.html" aria-label="Second Value multiplayer home"><span class="brand-mark" aria-hidden="true">SV</span><span><span class="eyebrow">THE OLD HARBOR AUCTION HOUSE</span><span class="brand-title">Second Value</span></span></a>
-      <div class="header-tools"><span class="online-connection" id="connection-status" role="status">MULTIPLAYER</span><label class="language-picker" data-no-localize><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 6.5h14M5 17.5h14"/></svg><select id="game-language-select" aria-label="Language / 语言 / Idioma"><option value="en" lang="en">English</option><option value="zh-CN" lang="zh-CN">中文</option><option value="es" lang="es">Español</option></select></label><button type="button" class="text-button" id="online-help-button">How to play</button></div>
+      <div class="header-tools"><span class="online-connection" id="connection-status" role="status">MULTIPLAYER</span><label class="language-picker" data-no-localize><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 6.5h14M5 17.5h14"/></svg><select id="game-language-select" aria-label="Language / 语言 / Idioma"><option value="en" lang="en">English</option><option value="zh-CN" lang="zh-CN">中文</option><option value="es" lang="es">Español</option></select></label><button type="button" class="text-button sound-toggle" id="auction-sound" aria-pressed="false">Sound off</button><button type="button" class="text-button" id="online-help-button">How to play</button></div>
     </header>
     <main id="online-game" aria-live="off"></main>
     <footer class="site-footer"><span>Different eyes. Different value.</span><a href="index.html" id="practice-link">Solo practice</a></footer>
@@ -37,11 +45,21 @@
   <dialog id="online-help">
     <div class="dialog-heading"><span class="eyebrow">THE RULES</span><button type="button" id="online-close-help" class="text-button">Close</button></div>
     <h2>One table.<br>Different reasons to bid.</h2>
+    <p><button type="button" class="primary" data-open-tutorial>Learn in one crate</button></p>
+    <details class="room-recovery-guide" id="online-recovery-help"><summary>How to return to this room</summary><ol>
+      <li>Return in the original browser tab, then refresh it or retry the connection.</li>
+      <li>A room code alone cannot restore your previous seat in a new tab.</li>
+      <li>Rooms expire after six hours with no player activity.</li>
+      <li>Offline status begins after 15 seconds without a room update.</li>
+      <li>Bids, sales and host actions never happen automatically while someone is offline.</li>
+    </ol></details>
     <ol>
       <li>Invite two to four players. Each starts with 1,000 virtual coins. Pick one role before the host begins.</li>
       <li>Everyone bids on the same crate of six objects. The whole crate goes to one winner.</li>
       <li>New sessions: The auction house publishes a reserve before bidding, around 10% of the crate’s ordinary sale value (8–12%). Role abilities do not affect it. It stays fixed for all three rounds; even a sole bid must meet it. If the crate goes unsold, nobody pays.</li>
       <li>Choose from six roles. Everyone shares the same bidding actions; each role has one exclusive ability.</li>
+      <li>New sessions: Each crate has a public source. The source changes draw probabilities, not guaranteed contents. Identities and ordinary prices are fixed before bidding.</li>
+      <li>After settlement, compare the buyer’s actual result with other players’ hypothetical returns at the same winning bid. Fees and available cash are included; these comparisons do not change anyone’s balance.</li>
       <li>The Appraiser may privately identify two objects per crate. The Restorer repairs after winning; the Collector delivers a pair in a locked theme.</li>
       <li>The Salvager harvests reproductions; the Curator exhibits three different categories; the Antique Dealer sells to a regular customer.</li>
       <li>Round 1 shows silhouettes. Round 2 adds the genuine count. Round 3 reveals one identity and the repairable count.</li>

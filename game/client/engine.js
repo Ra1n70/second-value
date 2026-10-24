@@ -7,8 +7,13 @@
   const STARTING_CASH = 1000;
   const CRATE_SIZE = 6;
   const MAX_SESSION_ACTIONS = 10000;
-  const RULES_VERSION = 4;
+  const RULES_VERSION = 5;
   const THEMES = {harbor:'Old Harbor', railway:'Railway'};
+  const SOURCES = {
+    workshop: {name:"Watchmaker's clearance",evidence:'A faded repair tag',hint:'Mechanical objects and genuine damaged pieces are more likely.',story:'A shuttered watchmaker leaves behind unfinished repairs and forgotten keepsakes.'},
+    estate: {name:"Collector's estate",evidence:'A torn catalog page',hint:'Genuine, intact objects and themed collectibles are more likely.',story:'An old collection reaches the auction house with only fragments of its catalog.'},
+    theater: {name:'Theater storeroom',evidence:'An old admission ticket',hint:'Reproductions and stage props are more likely; genuine objects can still appear.',story:'Behind the curtains, stage props and real keepsakes have shared the same dusty shelves.'}
+  };
   const ROLES = {
     restorer: {name:'Restorer',short:'Restorer',mark:'R',tagline:'Find the value beneath the damage.',passive:'After winning, choose up to two genuine damaged objects to repair. Pay their fixed fees before selling.',skill:'Precision repair',skillText:'One ability: repair up to two eligible objects after purchase. No private inspection.',risk:'Repair gains are capped. Paying too much can still turn a good repair into a loss.'},
     appraiser: {name:'Appraiser',short:'Appraiser',mark:'A',tagline:'Know what everyone else is guessing.',passive:'Privately identify up to two objects across all three rounds. Ordinary sale prices are the same for everyone.',skill:'Authenticate',skillText:'Reveal one object’s identity, authenticity, condition, category, theme and exact base price.',risk:'Better information does not protect you from overbidding.'},
@@ -48,7 +53,7 @@
     {id:'console-radio',name:'Console receiver',shape:'radio',category:'instrument',theme:null,base:300,genuine:true,condition:'intact'},
     {id:'railway-map',name:'Original railway map',shape:'map',category:'document',theme:'railway',base:240,genuine:true,condition:'intact'}
   ].map(item=>({...item,catalogId:item.catalogId??item.id,appearance:item.shape,authenticity:item.genuine?'genuine':'reproduction',baseValue:item.base,harbor:item.theme==='harbor'}));
-  function validateRules(version) {if(![1,2,3,4].includes(version))throw new Error('Choose a valid rules revision.');return version;}
+  function validateRules(version) {if(![1,2,3,4,5].includes(version))throw new Error('Choose a valid rules revision.');return version;}
   function savedRules(raw) {return Object.hasOwn(raw,'rulesVersion')?validateRules(raw.rulesVersion):1;}
   function catalogItems(gameOrVersion) {
     const version=gameOrVersion===undefined?RULES_VERSION:typeof gameOrVersion==='number'?gameOrVersion:gameOrVersion.rulesVersion??1;
@@ -56,6 +61,24 @@
   }
   const SHAPES = {clock:'Clock-shaped object',cup:'Small ceramic object',badge:'Metal insignia',camera:'Camera-shaped object',radio:'Radio-shaped object',map:'Folded paper document'};
   function rng(seed) {let a=seed>>>0;return function(){a+=0x6D2B79F5;let t=Math.imul(a^(a>>>15),1|a);t^=t+Math.imul(t^(t>>>7),61|t);return ((t^(t>>>14))>>>0)/4294967296;};}
+  function sourceWeight(sourceId,item) {
+    if(sourceId==='workshop')return (item.category==='mechanical'?1.6:1)*(item.genuine&&item.condition==='damaged'?4:1);
+    if(sourceId==='estate')return item.genuine?(item.condition==='intact'?(item.theme?3.8:2.5):(item.theme?1.5:1)):.55;
+    if(sourceId==='theater')return item.genuine?1:4;
+    return 1;
+  }
+  function sourceDraw(pool,sourceId,random) {
+    const remaining=[...pool],items=[];
+    while(items.length<CRATE_SIZE) {
+      let target=random()*remaining.reduce((sum,item)=>sum+sourceWeight(sourceId,item),0),chosen=remaining.length-1;
+      for(let index=0;index<remaining.length;index++) {
+        target-=sourceWeight(sourceId,remaining[index]);
+        if(target<0){chosen=index;break;}
+      }
+      items.push(remaining.splice(chosen,1)[0]);
+    }
+    return items;
+  }
   function crateReserve(items,seed,rulesVersion) {
     if(rulesVersion<4)return 0;
     // The auction house sets the reserve once before bidding. Its own stream
@@ -208,6 +231,20 @@
     const bonus=pair.length?Math.min(120,Math.floor((pair[0].base+pair[1].base)/4)):0;
     return {...ordinary,bonus,recovery:base+bonus,pair:pair.map(item=>item.id)};
   }
+  function valuationBoard(items,players,{winnerId,winningBid,receipt}={}) {
+    // A counterfactual is useful only after a real purchase has been settled.
+    // It never alters a balance or substitutes an optimized plan for the winner's choice.
+    if(!winnerId||!receipt||!Number.isSafeInteger(winningBid)||winningBid<1||!Array.isArray(players)||!players.some(player=>player.id===winnerId))return null;
+    const ordinary=items.reduce((sum,item)=>sum+item.base,0);
+    const rows=players.map(player=>{
+      const cashBefore=player.cashBefore,affordable=validCash(cashBefore)&&cashBefore>=winningBid,actual=player.id===winnerId;
+      const row={id:player.id,name:player.name,role:player.role,theme:player.theme??null,cashBefore,affordable,actual};
+      if(!affordable)return {...row,sale:null,cost:null,bonus:null,recovery:null,abilityGain:null,profit:null};
+      const plan=actual?receipt:salePlan(player.role,items,'special',cashBefore-winningBid,{theme:player.theme??'harbor'});
+      return {...row,sale:plan.sale,cost:plan.cost,bonus:plan.bonus,recovery:plan.recovery,abilityGain:plan.recovery-ordinary,profit:actual?receipt.profit:plan.recovery-winningBid};
+    });
+    return {ordinary,winningBid,rows};
+  }
   function estimateFromEvidence(items,role,targets,theme,context) {
     const round=context.round||1;
     const genuineCount=round>=2?items.filter(item=>item.genuine).length:null;
@@ -217,16 +254,22 @@
       const candidates=known?[item]:catalogItems(context.rulesVersion??RULES_VERSION).filter(candidate=>candidate.shape===item.shape);
       return candidates.map(candidate=>({...candidate,id:'estimate-'+index}));
     });
+    const weighted=(context.rulesVersion??RULES_VERSION)>=5&&Object.hasOwn(SOURCES,context.sourceId);
+    const poolWeight=weighted?catalogItems(context.rulesVersion).reduce((sum,item)=>sum+sourceWeight(context.sourceId,item),0):0;
     let total=0,count=0;
-    function visit(crate,index) {
+    function visit(crate,index,likelihood=1,usedWeight=0) {
       if(index===possibilities.length) {
         // This demo draws catalog identities without replacement.
         if(new Set(crate.map(item=>item.catalogId)).size!==crate.length)return;
         if(genuineCount!==null&&crate.filter(item=>item.genuine).length!==genuineCount)return;
         if(repairCount!==null&&crate.filter(canRepair).length!==repairCount)return;
-        total+=salePlan(role,crate,'special',context.cash??STARTING_CASH,{theme}).recovery;count++;return;
+        total+=salePlan(role,crate,'special',context.cash??STARTING_CASH,{theme}).recovery*likelihood;count+=likelihood;return;
       }
-      for(const item of possibilities[index])visit([...crate,item],index+1);
+      for(const item of possibilities[index]) {
+        if(weighted&&crate.some(selected=>selected.catalogId===item.catalogId))continue;
+        const weight=weighted?sourceWeight(context.sourceId,item):0;
+        visit([...crate,item],index+1,weighted?likelihood*weight/(poolWeight-usedWeight):1,usedWeight+weight);
+      }
     }
     visit([],0);return count?total/count:0;
   }
@@ -254,7 +297,7 @@
       return {id:'bot-'+index,name:names[index],role,theme,bid};
     });
   }
-  function prepareBidders(game) {game.bots=computerBids(game.items,rng(game.seed^0x4F17C2),{round:game.round,history:game.history,publicIndex:game.publicIndex,botCash:game.botStartingCash,botThemes:game.botThemes,botRoles:game.botRoles,rulesVersion:game.rulesVersion??1,reservePrice:game.reservePrice??0});}
+  function prepareBidders(game) {game.bots=computerBids(game.items,rng(game.seed^0x4F17C2),{round:game.round,history:game.history,publicIndex:game.publicIndex,botCash:game.botStartingCash,botThemes:game.botThemes,botRoles:game.botRoles,rulesVersion:game.rulesVersion??1,reservePrice:game.reservePrice??0,sourceId:game.sourceId??null});}
   function seededBotRoles(seed) {
     // Role selection has its own stream, independent of the crate shuffle, truth,
     // human role and quotes. A session locks these choices for all later crates.
@@ -273,12 +316,16 @@
     if(!Array.isArray(botRoles)||botRoles.length!==3||new Set(botRoles).size!==3||botRoles.some(botRole=>!Object.hasOwn(ROLES,botRole)))throw new Error('Choose valid locked computer roles.');
     if(context.botThemes&&(!Array.isArray(context.botThemes)||context.botThemes.length!==3||context.botThemes.some((botTheme,index)=>botRoles[index]==='collector'?!Object.hasOwn(THEMES,botTheme):botTheme!==null)))throw new Error('Choose valid locked computer themes.');
     const random=rng(seed),pool=clone(catalogItems(rulesVersion));
-    for(let i=pool.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
+    // Source selection uses its own stream and never depends on role or wealth.
+    // Earlier revisions keep every shuffle draw and committed quote unchanged.
+    const sourceId=rulesVersion>=5?Object.keys(SOURCES)[Math.floor(rng(seed^0x39B4D871)()*3)]:null;
+    if(rulesVersion<5)for(let i=pool.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
     const prefix=context.instancePrefix??String(seed>>>0);
-    const items=pool.slice(0,CRATE_SIZE).map((item,index)=>({...item,id:`${prefix}-${index}-${item.catalogId}`}));
+    const items=(rulesVersion>=5?sourceDraw(pool,sourceId,random):pool.slice(0,CRATE_SIZE)).map((item,index)=>({...item,id:`${prefix}-${index}-${item.catalogId}`}));
     const priority=['you','bot-0','bot-1','bot-2'],offset=Math.floor(random()*4),order=priority.slice(offset).concat(priority.slice(0,offset));
     const game={version:4,rulesVersion,seed:seed>>>0,role,theme:role==='collector'?theme:null,startingCash,botStartingCash:[...botStartingCash],botThemes:context.botThemes?clone(context.botThemes):null,phase:'inspect',round:1,items,reservePrice:crateReserve(items,seed,rulesVersion),bots:[],priority:order,publicIndex:Math.floor(random()*CRATE_SIZE),selected:0,inspected:[],history:[],actions:[],bid:null,passed:false,winner:null,mode:null,receipt:null};
     if(rulesVersion>=3)game.botRoles=[...botRoles];
+    game.sourceId=sourceId;
     if(context.noBots!==true)prepareBidders(game);return game;
   }
   function useSkill(game,index) {
@@ -464,5 +511,5 @@
       return session;
     } catch {return null;}
   }
-  return {STARTING_CASH,CRATE_SIZE,MAX_SESSION_ACTIONS,RULES_VERSION,ROLES,THEMES,ITEMS,SHAPES,rng,catalogFor,catalogItems,abilityEligibility,abilitySelectionLimit,inspect,salePlan,computerBids,newGame,useSkill,openBidding,returnToInspection,resolveRound,placeBid,nextRound,settle,standings,restore,getCash,newSession,performSession,sessionStandings,restoreSession};
+  return {STARTING_CASH,CRATE_SIZE,MAX_SESSION_ACTIONS,RULES_VERSION,ROLES,THEMES,SOURCES,ITEMS,SHAPES,rng,catalogFor,catalogItems,abilityEligibility,abilitySelectionLimit,inspect,salePlan,valuationBoard,computerBids,newGame,useSkill,openBidding,returnToInspection,resolveRound,placeBid,nextRound,settle,standings,restore,getCash,newSession,performSession,sessionStandings,restoreSession};
 });

@@ -36,6 +36,7 @@ function requirePhase(room, expected) {
 }
 function commit(room, draft) {
   draft.revision = room.revision + 1;
+  if (!own(draft, 'valuation')) delete room.valuation;
   Object.assign(room, draft);
   return room;
 }
@@ -52,6 +53,9 @@ function drawCrate(room) {
   room.items = game.items.map((item, slot) => ({...item, id: `lot-${slot}`}));
   room.publicIndex = game.publicIndex;
   room.reservePrice = game.reservePrice;
+  room.sourceId = game.sourceId ?? null;
+  room.cratePlayers = activePlayers(room).map(player => ({id: player.id, name: player.name, role: player.role, theme: player.theme, cashBefore: player.cash}));
+  delete room.valuation;
   room.round = 1;
   room.history = [];
   room.winnerId = null;
@@ -74,7 +78,7 @@ function createRoom({code, seed, host} = {}) {
   if (typeof code !== 'string' || !/^[A-Z0-9]{4,12}$/.test(code)) fail('Choose a valid room code.');
   if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) fail('Choose a valid game seed.');
   const player = profile(host);
-  return {version: 1, rulesVersion: E.RULES_VERSION, code, seed, revision: 1, turnSequence: 0, turnId: `${code}:0`, phase: 'lobby', hostId: player.id, players: [player], auctionNumber: 0, round: 0, items: [], publicIndex: null, reservePrice: 0, history: [], priority: [], winnerId: null, winningBid: null, receipt: null, ledger: [], endedReason: null};
+  return {version: 1, rulesVersion: E.RULES_VERSION, code, seed, revision: 1, turnSequence: 0, turnId: `${code}:0`, phase: 'lobby', hostId: player.id, players: [player], auctionNumber: 0, round: 0, items: [], publicIndex: null, reservePrice: 0, sourceId: null, history: [], priority: [], winnerId: null, winningBid: null, receipt: null, ledger: [], endedReason: null};
 }
 function joinRoom(room, input) {
   validateRoom(room);
@@ -103,9 +107,18 @@ function validateCommand(command) {
 }
 function ledgerEntry(room) {
   if (room.ledger.some(entry => entry.auctionNumber === room.auctionNumber)) fail('This crate has already been settled.');
+  room.valuation = settledValuation(room);
   room.ledger.push({auctionNumber: room.auctionNumber, winnerId: room.winnerId, paid: room.winningBid || 0, players: room.players.map(player => ({id: player.id, name: player.name, cash: player.cash, profit: player.profit})), ...(room.reservePrice > 0 ? {reservePrice: room.reservePrice} : {})});
   for (const player of room.players) player.ready = false;
   phase(room, 'result');
+}
+function settledValuation(room) {
+  if (!room.receipt || !room.winnerId) return null;
+  // Existing rooms may already be awaiting disposal or settled when deployed.
+  // Reconstruct the original funds from the actual receipt without any credits.
+  const participants = new Set((room.history.at(-1)?.bids ?? []).map(bid => bid.id));
+  const players = room.cratePlayers ?? room.players.filter(player => participants.size ? participants.has(player.id) : player.active).map(player => ({id: player.id, name: player.name, role: player.role, theme: player.theme, cashBefore: player.cash - (player.id === room.winnerId ? room.receipt.profit : 0)}));
+  return E.valuationBoard(room.items, players, {winnerId: room.winnerId, winningBid: room.winningBid, receipt: room.receipt});
 }
 function reveal(room) {
   const bids = activePlayers(room).map(player => ({id: player.id, name: player.name, role: player.role, theme: player.theme, bid: player.bid.pass ? 0 : player.bid.amount}));
@@ -242,13 +255,14 @@ function viewFor(room, viewerId) {
   const publicRepair = room.round === 3 || opened;
   return {
     code: room.code, revision: room.revision, rulesVersion: room.rulesVersion ?? 2, turnId: room.turnId, phase: room.phase,
-    hostId: room.hostId, selfId: viewer.id, auctionNumber: room.auctionNumber, round: room.round, reservePrice: room.reservePrice ?? 0,
+    hostId: room.hostId, selfId: viewer.id, auctionNumber: room.auctionNumber, round: room.round, reservePrice: room.reservePrice ?? 0, sourceId: room.sourceId ?? null,
     players: room.players.map(player => ({id: player.id, name: player.name, role: player.role, theme: player.theme, cash: player.cash, profit: player.profit, ready: player.ready, submitted: !!player.bid, active: player.active})),
     self: {id: viewer.id, role: viewer.role, theme: viewer.theme, cash: viewer.cash, inspectionsLeft: viewer.role === 'appraiser' ? Math.max(0, 2 - viewer.inspected.length) : 0, inspected: [...viewer.inspected], bid: clone(viewer.bid), submitted: !!viewer.bid},
     lots: room.items.map((item, slot) => publicItem(room, viewer, item, slot)),
     public: {genuineCount: publicCount ? room.items.filter(item => item.genuine).length : null, repairableCount: publicRepair ? room.items.filter(item => item.genuine && item.condition === 'damaged' && item.repair).length : null, publicIndex: room.round === 3 || opened ? room.publicIndex : null},
     history: clone(room.history), priority: [...room.priority], winnerId: room.winnerId, winningBid: room.winningBid,
     receipt: clone(room.receipt), ledger: clone(room.ledger),
+    ...(['result', 'ended'].includes(room.phase) ? {valuation: clone(room.valuation ?? settledValuation(room))} : {}),
     can: {
       start: isHost && room.phase === 'lobby' && allReady,
       inspect: viewer.active && inAuction && viewer.role === 'appraiser' && !viewer.bid && viewer.inspected.length < 2,

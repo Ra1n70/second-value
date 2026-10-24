@@ -472,3 +472,199 @@ test('reserve labels, rules and validation switch in place in solo and multiplay
     assert.deepEqual(h.navigation, []);
   }
 });
+
+test('crate source stories, valuation copy and reveal controls switch in place in both game modes', async () => {
+  assert.deepEqual(Object.keys(game.SOURCES).sort(), ['estate', 'theater', 'workshop']);
+  const sources = [
+    'SOURCE OF THIS CRATE', 'Source of this crate',
+    ...Object.values(game.SOURCES).flatMap(source => ['name', 'evidence', 'hint', 'story'].map(field => source[field])),
+    'A clue to the mix. Exact identities and values remain hidden.',
+    'New sessions: Each crate has a public source. The source changes draw probabilities, not guaranteed contents. Identities and ordinary prices are fixed before bidding.',
+    'After settlement, compare the buyer’s actual result with other players’ hypothetical returns at the same winning bid. Fees and available cash are included; these comparisons do not change anyone’s balance.',
+    'THE VALUE AT THIS TABLE', 'The value at this table', 'Ordinary crate value', 'One crate. Different opportunities.',
+    'Actual sale', 'If you had won', 'Not enough cash', 'Winning price', 'Sale after fees',
+    'This bid exceeds your cash.', 'Cash before bidding',
+    "Hypothetical results use this winning price and each player's cash before bidding. They are not earnings.",
+    'Role advantage', 'Profit at this price', 'Ordinary sale', 'Sealed bids opened',
+    'No hammer this round', 'SOLD', 'Crate unveiled', 'Sale settled', 'Your result',
+    'Sound off', 'Sound on', 'Auction sounds',
+  ];
+  for (const online of [false, true]) {
+    const h = await localeHarness({ online });
+    const labels = sources.map(source => h.main.append(new Element('p', {}, source)));
+    const sound = h.main.append(new Element('button', { 'aria-label': 'Sound off', title: 'Sound off' }, 'Sound off'));
+    const user = h.main.append(new Element('span', { 'data-user-text': '' }, 'Sound on'));
+    const price = h.main.append(new Element('span', {}, '1,234'));
+    const profit = h.main.append(new Element('span', {}, '−75'));
+    for (const language of ['zh-CN', 'es', 'en', 'es', 'zh-CN', 'en']) {
+      h.base.setLanguage(language);
+      h.locale.localize(h.main);
+      labels.forEach((label, index) => {
+        const source = sources[index];
+        assert.equal(label.textContent, h.locale.translate(source), `${online}: ${language}: ${source}`);
+        if (language !== 'en') assert.notEqual(label.textContent, source, `${language}: ${source}`);
+        if (language === 'es') assert.doesNotMatch(label.textContent, /[\u3400-\u9fff]/, source);
+        assert.doesNotMatch(label.textContent, /undefined|NaN/, source);
+      });
+      assert.equal(sound.getAttribute('aria-label'), h.locale.translate('Sound off'));
+      assert.equal(sound.getAttribute('title'), h.locale.translate('Sound off'));
+      assert.equal(user.textContent, 'Sound on');
+      assert.equal(price.textContent, '1,234');
+      assert.equal(profit.textContent, '−75');
+    }
+    assert.deepEqual(h.navigation, []);
+  }
+});
+
+test('private notebook distinguishes facts and guesses while language changes preserve estimates and marks', async () => {
+  const sources = [
+    'Private notes', 'Your private notebook',
+    'Only you can see these notes. Saved on this device for this crate.',
+    'Only you can see these notes. Saved in this tab for this crate.',
+    'Confirmed information', 'Your judgment', 'No confirmed identity yet.',
+    'Condition', 'Intact', 'Damaged', 'Unrepairable', 'Base price', 'Catalog range',
+    'Authenticity', 'Genuine', 'Reproduction',
+    'Neutral', 'Interested', 'Uncertain', 'Your estimate',
+    'Optional whole-number estimate', 'Use a whole number from 0 to 999,999.',
+    'Your estimates', 'Filled estimates',
+    'These are your estimates, not confirmed values or a recommended bid.',
+    'Notes cannot be saved in this browser. Keep this tab open.',
+    'Close private notes', 'Source record',
+    'Public reveal', 'Private note', 'Crate opened', 'Unconfirmed',
+    ...['A', 'B', 'C', 'D', 'E', 'F'].map(letter => `Object ${letter}`),
+  ];
+  for (const online of [false, true]) {
+    const h = await localeHarness({ online });
+    const notebook = h.body.append(new Element('dialog', { 'aria-label': 'Your private notebook' }));
+    notebook.open = true;
+    const labels = sources.map(source => notebook.append(new Element('span', {}, source)));
+    const zero = notebook.append(new Element('input', { placeholder: 'Optional whole-number estimate' }));
+    zero.value = '0';
+    const estimate = notebook.append(new Element('input', { placeholder: 'Optional whole-number estimate' }));
+    estimate.value = '1234';
+    const neutral = notebook.append(new Element('button', { 'aria-pressed': 'false' }, 'Neutral'));
+    const interested = notebook.append(new Element('button', { 'aria-pressed': 'true' }, 'Interested'));
+    const summary = notebook.append(new Element('span', { 'data-user-text': '' }, '1,234'));
+    for (const language of ['zh-CN', 'es', 'en', 'zh-CN', 'es', 'en']) {
+      h.base.setLanguage(language);
+      h.locale.localize(notebook);
+      labels.forEach((label, index) => {
+        const source = sources[index];
+        assert.equal(label.textContent, h.locale.translate(source), `${online}: ${language}: ${source}`);
+        if (language !== 'en') assert.notEqual(label.textContent, source, `${language}: ${source}`);
+        if (language === 'es') assert.doesNotMatch(label.textContent, /[\u3400-\u9fff]/, source);
+        assertNumbersPreserved(source, label.textContent);
+      });
+      assert.equal(notebook.getAttribute('aria-label'), h.locale.translate('Your private notebook'));
+      assert.equal(estimate.getAttribute('placeholder'), h.locale.translate('Optional whole-number estimate'));
+      assert.equal(zero.value, '0');
+      assert.equal(estimate.value, '1234');
+      assert.equal(summary.textContent, '1,234');
+      assert.equal(neutral.getAttribute('aria-pressed'), 'false');
+      assert.equal(interested.getAttribute('aria-pressed'), 'true');
+      assert.equal(notebook.open, true);
+      const facts = ['Public reveal', 'Private note', 'Unconfirmed'].map(source => h.locale.translate(source));
+      assert.equal(new Set(facts).size, 3);
+      assert.ok(!facts.includes(h.locale.translate('Your estimate')));
+    }
+    assert.deepEqual(h.navigation, []);
+  }
+});
+
+test('guided crate copy switches live without changing a draft bid, selected sale or receipt amounts', async () => {
+  const sources = [
+    'Learn in one crate', 'One guided crate', 'Practice example · Restorer',
+    'Scripted bids. Your real games and cash are untouched.', 'Close tutorial',
+    'Read clues', 'Seal a bid', 'Reveal the crate', 'Choose a sale',
+    'Choose an object and read the public clue.', 'Final-round practice',
+    'This example starts in round 3.', 'Why the final round?',
+    'Earlier rounds can sell early at 1.8× or 1.3× the runner-up bid. In the final round, the highest valid bid wins.',
+    'You have priority if bids tie.', 'What you know',
+    'A silhouette suggests a category, not an exact identity.',
+    'This object is public. Everyone sees the same identity and value.',
+    'Continue to bidding', 'Enter a sealed bid, then review it.',
+    "The rival's quote is scripted for this lesson and stays hidden until reveal.",
+    'Practice cash', 'Your bid', 'Review sealed bid',
+    'Nothing has been submitted. You can still return and edit.',
+    'Return and edit', 'Confirm and reveal', 'Back to clues',
+    'Enter a whole-number practice bid from 40 to 1,000.', 'Practice rival',
+    'Your bid wins.', 'Equal bids: your published priority wins.',
+    'Your bid did not win. Your practice cash stays unchanged.', 'Try another bid',
+    'Compare sale choices', 'Continue to sale choices', 'Compare two sale choices.',
+    "You are comparing the scripted winner's crate. This does not change your cash.",
+    'Ordinary sale', 'Repair the clock', 'Choose a sale, then check the full receipt.',
+    'Confirm practice sale', 'Finish comparison', 'Practice receipt',
+    'Hypothetical comparison', 'Your practice cash', 'Profit after bid and fees',
+    'A better repair cannot make every purchase profitable.',
+    'Replay this crate', 'Finish tutorial', 'Start again',
+    'This is an isolated lesson. Closing it leaves your real auction exactly as it was.',
+    'Source', 'Genuine objects', 'Repairable objects', 'Repair fee',
+    'Sealed bid', 'Repair sale price', 'Back to reveal', 'Choose an object first.',
+    'Choose a valid practice object.', 'Reveal the practice bids first.',
+    'That practice action is unavailable at this step.',
+    'The practice engine is unavailable.', 'The practice catalog is unavailable.',
+  ];
+  for (const online of [false, true]) {
+    const h = await localeHarness({ online });
+    const tutorial = h.body.append(new Element('dialog', { 'aria-label': 'Learn in one crate' }));
+    tutorial.open = true;
+    const labels = sources.map(source => tutorial.append(new Element('span', {}, source)));
+    const bid = tutorial.append(new Element('input', { 'aria-label': 'Your bid' }));
+    bid.value = '300';
+    const sale = tutorial.append(new Element('button', { 'aria-pressed': 'true' }, 'Repair the clock'));
+    const amounts = ['40', '400', '445', '45', '1,000'].map(value => tutorial.append(new Element('strong', {}, value)));
+    for (const language of ['zh-CN', 'es', 'en', 'es', 'zh-CN', 'en']) {
+      h.base.setLanguage(language); h.locale.localize(tutorial);
+      labels.forEach((label, index) => {
+        const source = sources[index];
+        assert.equal(label.textContent, h.locale.translate(source), `${online}: ${language}: ${source}`);
+        if (language !== 'en') assert.notEqual(label.textContent, source, `${language}: ${source}`);
+        if (language === 'es') assert.doesNotMatch(label.textContent, /[\u3400-\u9fff]/, source);
+        assertNumbersPreserved(source, label.textContent);
+      });
+      assert.equal(tutorial.getAttribute('aria-label'), h.locale.translate('Learn in one crate'));
+      assert.equal(bid.getAttribute('aria-label'), h.locale.translate('Your bid'));
+      assert.equal(bid.value, '300');
+      assert.equal(sale.getAttribute('aria-pressed'), 'true');
+      assert.equal(tutorial.open, true);
+      assert.deepEqual(amounts.map(element => element.textContent), ['40', '400', '445', '45', '1,000']);
+    }
+    assert.deepEqual(h.navigation, []);
+  }
+});
+
+test('room recovery translates blocked actions while preserving player names and offline clocks', async () => {
+  const sources = [
+    'Room recovery', 'Offline for', 'Without room updates for', 'Offline time unavailable',
+    'The room reports these players as offline.',
+    'Your connection is interrupted. Other players’ status may be out of date.',
+    'This player still needs to submit a bid or pass.', 'Their sealed choice is already submitted.',
+    'This player still needs to get ready.', 'This player is already ready.',
+    'The host needs to start the auction.', 'The host needs to open the next round.',
+    'The winner needs to settle this crate.',
+    'The host needs to open the next crate or finish the session.',
+    'This player has no pending action in this stage.', 'How to return to this room',
+    'Return in the original browser tab, then refresh it or retry the connection.',
+    'A room code alone cannot restore your previous seat in a new tab.',
+    'Rooms expire after six hours with no player activity.',
+    'Offline status begins after 15 seconds without a room update.',
+    'Bids, sales and host actions never happen automatically while someone is offline.',
+  ];
+  const h = await localeHarness({ online: true });
+  const labels = sources.map(source => h.main.append(new Element('p', {}, source)));
+  const user = h.main.append(new Element('span', { 'data-user-text': '' }, 'Room recovery'));
+  const clock = h.main.append(new Element('time', { 'data-no-localize': '' }, '01:45'));
+  for (const language of ['zh-CN', 'es', 'en', 'es', 'zh-CN', 'en']) {
+    h.base.setLanguage(language); h.locale.localize(h.main);
+    labels.forEach((label, index) => {
+      const source = sources[index];
+      assert.equal(label.textContent, h.locale.translate(source), `${language}: ${source}`);
+      if (language !== 'en') assert.notEqual(label.textContent, source, `${language}: ${source}`);
+      if (language === 'es') assert.doesNotMatch(label.textContent, /[\u3400-\u9fff]/, source);
+      assertNumbersPreserved(source, label.textContent);
+    });
+    assert.equal(user.textContent, 'Room recovery');
+    assert.equal(clock.textContent, '01:45');
+  }
+  assert.deepEqual(h.navigation, []);
+});

@@ -36,7 +36,7 @@ function won(role) {
 const sell = slots => ({mode: 'special', repairSlots: [], pairSlots: [], abilitySlots: slots});
 
 test('new rooms advertise current rules while old rooms keep their catalog across continued auctions', () => {
-  assert.equal(R.viewFor(open('broker'), 'host').rulesVersion, 4);
+  assert.equal(R.viewFor(open('broker'), 'host').rulesVersion, 5);
   const legacy = open('appraiser', true);
   assert.equal(R.viewFor(legacy, 'host').rulesVersion, 2);
   const oldIds = new Set(E.catalogItems(2).map(item => item.catalogId));

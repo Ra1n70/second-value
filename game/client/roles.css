@@ -1,24 +1,24 @@
 /* One compact roster, with explicit handling choices after purchase. */
-.role-roster-label{font-size:12px;color:var(--gold);margin:0 0 12px;letter-spacing:.02em}
+.role-roster-label{font-size:14px;color:var(--gold);margin:0 0 12px;letter-spacing:.02em}
 .expanded-roles{grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
 .expanded-roles .role-card{padding:17px;min-height:0;gap:10px;display:flex;flex-direction:column}
 .expanded-roles .role-heading:has(.role-portrait){display:flex;align-items:center;gap:12px;text-align:left;justify-items:start}
 .expanded-roles .role-heading .role-portrait{width:88px;height:88px;flex-shrink:0;margin:0}
 .expanded-roles .role-heading h3{font-size:23px;line-height:1.25;overflow-wrap:anywhere}
-.expanded-roles .gold{font-size:12px;line-height:1.6;min-height:2em}
-.expanded-roles .skill{font-size:12px;line-height:1.75;flex:1}
-.expanded-roles .skill strong{display:block;font-size:12px;margin-bottom:5px;color:var(--gold)}
+.expanded-roles .gold{font-size:14px;line-height:1.6;min-height:2em}
+.expanded-roles .skill{font-size:14px;line-height:1.75;flex:1}
+.expanded-roles .skill strong{display:block;font-size:14px;margin-bottom:5px;color:var(--gold)}
 .expanded-roles .skill>span{display:block}
-.expanded-roles .role-card .risk{margin-top:4px;font-size:11px;line-height:1.7}
+.expanded-roles .role-card .risk{margin-top:4px;font-size:13px;line-height:1.7}
 .online-lobby .expanded-roles .role-card{padding:15px;gap:10px;min-height:0}
 .online-lobby .expanded-roles .role-card .role-heading:has(.role-portrait){display:flex;gap:10px;text-align:left;justify-items:start}
 .online-lobby .expanded-roles .role-heading .role-portrait{width:80px;height:80px}
 .online-lobby .expanded-roles .role-heading h3{font-size:21px}
 .online-lobby-player .role-portrait{display:grid;place-items:center;width:54px;height:54px;flex-shrink:0}
 .online-lobby-player .role-portrait>.sprite-image{width:100%;height:100%;aspect-ratio:1}
-.online-lobby .expanded-roles .role-card .skill{font-size:12px;line-height:1.75}
-.online-lobby .expanded-roles .role-card .gold{font-size:11px}
-.ability-net{display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding:12px 0;border-top:1px dashed var(--line);font-size:12px}
+.online-lobby .expanded-roles .role-card .skill{font-size:14px;line-height:1.75}
+.online-lobby .expanded-roles .role-card .gold{font-size:13px}
+.ability-net{display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding:12px 0;border-top:1px dashed var(--line);font-size:14px}
 .ability-net strong{font-size:20px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .online-paper .ability-net{border-color:#af987166;color:#705d43}
 .online-paper .ability-net .positive{color:#3f6f46}
@@ -28,12 +28,12 @@
 .processing-selection .online-sale-option:has(input:disabled){opacity:.55}
 .processing-selection .online-sale-option small strong{display:inline;color:inherit;font-size:inherit}
 .online-sale-controls [aria-pressed=true]{border-color:#d8b371;background:#334538;box-shadow:inset 0 0 0 1px #d8b37155}
-.processing-receipt{margin:10px 0;font-size:11px;line-height:1.7}
-.auction-reserve{display:flex;align-items:center;gap:22px;padding:12px 16px;margin:0 0 18px;border:1px solid var(--line);border-left:3px solid var(--gold);border-radius:5px;background:#21382b;font-size:12px;color:#efeedc}
+.processing-receipt{margin:10px 0;font-size:13px;line-height:1.7}
+.auction-reserve{display:flex;align-items:center;gap:22px;padding:12px 16px;margin:0 0 18px;border:1px solid var(--line);border-left:3px solid var(--gold);border-radius:5px;background:#21382b;font-size:14px;color:#efeedc}
 .reserve-amount{display:flex;align-items:baseline;gap:14px;flex-shrink:0;color:var(--gold)}
 .reserve-amount strong{font-size:25px;line-height:1.2;font-variant-numeric:tabular-nums}
 .reserve-copy{display:flex;flex-direction:column;gap:4px;line-height:1.6}
-.reserve-copy small{font-size:11px;color:var(--muted)}
+.reserve-copy small{font-size:13px;color:var(--muted)}
 .auction-reserve.is-unaffordable{border-left-color:var(--negative)}
 .auction-reserve.is-unaffordable .reserve-copy small{color:var(--negative)}
 @media(max-width:1150px) and (min-width:741px){
@@ -46,9 +46,9 @@
   .expanded-roles,.online-lobby .expanded-roles{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
   .expanded-roles .role-card,.online-lobby .expanded-roles .role-card{padding:12px;gap:8px;display:flex;align-items:stretch}
   .expanded-roles .role-heading:has(.role-portrait),.online-lobby .expanded-roles .role-card .role-heading:has(.role-portrait){flex-direction:column;align-items:flex-start;gap:7px}
-  .expanded-roles .role-heading h3,.online-lobby .expanded-roles .role-heading h3{font-size:19px}
+  .expanded-roles .role-heading h3,.online-lobby .expanded-roles .role-heading h3{font-size:20px}
   .expanded-roles .role-heading .role-portrait,.online-lobby .expanded-roles .role-heading .role-portrait{width:72px;height:72px}
-  .expanded-roles .skill,.online-lobby .expanded-roles .role-card .skill{font-size:11px;line-height:1.7}
-  .expanded-roles .role-card .risk,.online-lobby .expanded-roles .role-card .risk{display:block;font-size:10px}
-  .expanded-roles .gold,.online-lobby .expanded-roles .role-card .gold{font-size:11px;min-height:0}
+  .expanded-roles .skill,.online-lobby .expanded-roles .role-card .skill{font-size:13px;line-height:1.7}
+  .expanded-roles .role-card .risk,.online-lobby .expanded-roles .role-card .risk{display:block;font-size:12px}
+  .expanded-roles .gold,.online-lobby .expanded-roles .role-card .gold{font-size:13px;min-height:0}
 }

@@ -73,12 +73,14 @@ try {
   const started = (await command(host, 'start')).view;
   check(started.phase === 'auction' && started.lots.length === 6, 'Auction did not start with six objects');
   const reserve = started.reservePrice;
-  check(started.rulesVersion >= 4 && Number.isSafeInteger(reserve) && reserve > 1, 'Public auction reserve missing');
+  check(started.rulesVersion >= 5 && Number.isSafeInteger(reserve) && reserve > 1, 'Public auction reserve missing');
+  check(['workshop','estate','theater'].includes(started.sourceId) && !Object.hasOwn(started,'valuation'), 'Source or valuation privacy mismatch');
   check(reserve === (await view(guest, 'guest-reserve')).reservePrice, 'Reserve differs between seats');
   stages.push('Ready both and start with a shared public reserve');
   await command(host, 'inspect', {slot: 0});
   const hostPrivate = await view(host, 'host-private-view');
   const guestPrivate = await view(guest, 'guest-private-view');
+  check(guestPrivate.sourceId === started.sourceId && !Object.hasOwn(guestPrivate,'valuation'), 'Source changed or valuation leaked');
   check(hostPrivate.lots[0].known === true && guestPrivate.lots[0].known === false, 'Inspection privacy failed');
   stages.push('Private inspection visible only to appraiser');
   await command(host, 'bid', {amount: 200, pass: false});
@@ -101,6 +103,7 @@ try {
   const opened = await view(host, 'verify-reveal');
   check(opened.phase === 'dispose' && opened.winnerId === host.playerId && opened.winningBid === reserve, 'First-round hammer mismatch');
   check(opened.self.cash === 1000 - reserve && opened.lots.every(lot => lot.known), 'Reveal/cash invariant failed');
+  check(!Object.hasOwn(opened,'valuation'), 'Valuation must wait for the actual sale');
   stages.push('Bid exactly the reserve, guest passes, reveal crate; charge reserve once');
   const proceeds = opened.lots.reduce((sum, lot) => sum + lot.base, 0);
   const settled = (await command(host, 'sell', {mode: 'ordinary', repairSlots: [], pairSlots: []})).view;
@@ -108,6 +111,11 @@ try {
   const expectedCash = 1000 - reserve + proceeds;
   check(settled.phase === 'result' && settled.self.cash === expectedCash && settled.ledger.length === 1, 'Initial settlement invariant failed');
   check(settled.receipt.recovery === proceeds && settled.receipt.paid === reserve, 'Settlement receipt mismatch');
+  check(settled.sourceId === started.sourceId && settled.valuation?.ordinary === proceeds, 'Source or valuation total mismatch');
+  const actual = settled.valuation.rows.find(row => row.actual);
+  check(settled.valuation.rows.length === 2 && actual.id === host.playerId && actual.profit === settled.receipt.profit && actual.recovery === proceeds, 'Actual valuation must match the chosen ordinary sale');
+  check(settled.valuation.rows.every(row => row.cashBefore === 1000), 'Valuation starting funds mismatch');
+  stages.push('Public source stays fixed; valuation appears only after sale and matches the real receipt');
   for (let index = 0; index < 2; index++) {
     const hostAgain = await view(host, `host-settlement-read-${index + 1}`);
     const guestAgain = await view(guest, `guest-settlement-read-${index + 1}`);

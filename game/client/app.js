@@ -3,6 +3,9 @@
   const E = window.SecondValue;
   const L = window.SecondValueLocale;
   const Art = window.SecondValueArt;
+  const Show = window.SecondValueShow;
+  const Notes = window.SecondValueNotebook;
+  const Tutorial = window.SecondValueTutorial;
   const main = document.getElementById('game');
   const STORAGE = 'second-value-step-one-v1';
   const money = value => value.toLocaleString('en-US');
@@ -87,7 +90,7 @@
     </div>`;
   }
   function rolePicker() {
-    return `<div class="intro"><div><span class="eyebrow">YOUR EDGE IS A CHOICE</span><h1>Same crate.<br>A different kind of value.</h1><p>Some see damage. Some see a fake. Some see the missing piece. Choose your role and find out what you are willing to pay.</p></div><span class="tag session-tag">CONTINUOUS AUCTIONS · 1,000 STARTING COINS</span></div>
+    return `<div class="intro"><div><span class="eyebrow">YOUR EDGE IS A CHOICE</span><h1>Same crate.<br>A different kind of value.</h1><p>Some see damage. Some see a fake. Some see the missing piece. Choose your role and find out what you are willing to pay.</p>${Tutorial.buttonMarkup()}</div><span class="tag session-tag">CONTINUOUS AUCTIONS · 1,000 STARTING COINS</span></div>
       <p class="role-roster-label">Six roles. One shared auction.</p><div class="role-grid expanded-roles">${Object.entries(E.ROLES).map(([id,role])=>`<button type="button" class="role-card" data-role="${id}" aria-pressed="${selectedRole===id}" aria-label="Choose ${role.short}"><span class="role-heading"><span class="role-portrait" aria-hidden="true">${sprite(Art.portraitFor(id))}</span><h3>${role.name}</h3></span><p class="gold">${role.tagline}</p><span class="skill"><strong>${role.skill}</strong><span>${role.passive}</span></span><p class="risk">The risk: ${role.risk}</p></button>`).join('')}</div>
       ${selectedRole==='collector'?`<fieldset class="theme-picker"><legend>Choose your collection theme</legend><p class="small muted">Lock it before the session begins. Keep the same theme for every crate.</p><div class="theme-options">${Object.entries(E.THEMES).map(([id,name])=>`<button type="button" data-theme="${id}" aria-label="${name}" aria-pressed="${selectedTheme===id}"><span>${name}</span><small>${id==='harbor'?'More matching objects, smaller pair bonuses.':'Rarer matches, larger pair bonuses.'}</small></button>`).join('')}</div></fieldset>`:''}
       <div class="bottom-actions"><p>Cash carries between crates. Continue or leave after any settled auction.<br>Your role and collection theme stay locked for the session.</p><button type="button" class="primary" id="start-game">Enter as ${E.ROLES[selectedRole].short} →</button></div><p class="small muted" style="margin-top:14px">These values are a first draft, not balanced competitive rules.</p>${upgraded?'<p class="storage-note">Continuous auctions now carry your cash. Start a new session with the updated rules.</p>':''}${!storageAvailable?'<p class="storage-note">Browser storage is unavailable. This practice will reset if you refresh.</p>':''}`;
@@ -109,7 +112,7 @@
   function reserveNotice() {
     if(!game.reservePrice)return '';
     const unable=E.getCash(game)<minimumBid();
-    return `<section class="auction-reserve ${unable?'is-unaffordable':''}" aria-label="Auction-house reserve"><div class="reserve-amount"><span>Auction-house reserve</span><strong>${money(game.reservePrice)}</strong></div><div class="reserve-copy"><span>Minimum bid · fixed for this crate</span><small>${unable?'Your cash is below the reserve. You can pass this round.':'A winning bid must meet the reserve. This amount stays fixed for all three rounds.'}</small></div></section>`;
+    return `<details class="auction-reserve reserve-compact ${unable?'is-unaffordable':''}"><summary><span>Auction-house reserve</span><strong>${money(game.reservePrice)}</strong></summary><div class="reserve-explanation"><strong>Minimum bid · fixed for this crate</strong><p>${unable?'Your cash is below the reserve. You can pass this round.':'A winning bid must meet the reserve. This amount stays fixed for all three rounds.'}</p></div></details>`;
   }
   function historyMarkup() {
     if(!game.history.length)return '';
@@ -119,8 +122,8 @@
   function roundSummary() {
     const last=game.history.at(-1);
     const leader=last.bids[0];
-    return `<div class="workbench-head"><div><span class="eyebrow">ROUND ${game.round} / 3 · BIDS REVEALED</span><h2 class="lot-title">No hammer. Not yet.</h2></div></div>
-      ${reserveNotice()}<div class="auction-layout phase-layout"><section><p class="muted">This round did not sell. Everyone’s cash is unchanged.</p>${historyMarkup()}
+    return `<div class="workbench-head"><div><span class="eyebrow">ROUND ${game.round} / 3 · BIDS REVEALED</span><h2 class="lot-title">No hammer. Not yet.</h2></div><div class="workbench-tools">${reserveNotice()}${Notes.buttonMarkup()}</div></div>
+      <div class="auction-layout phase-layout"><section><p class="muted">This round did not sell. Everyone’s cash is unchanged.</p>${historyMarkup()}
       <div class="round-readout"><span class="eyebrow">WHY THE AUCTION CONTINUES</span><p>${last.highest?`Leading bid: ${bidderName(leader.id)} at ${money(last.highest)}.`:'No offers were made in this round.'}</p><p>Runner-up bid: ${money(last.second)}.</p><p>${last.reservePrice&&last.highest<last.reservePrice?'No bid met the reserve. Nobody pays.':`Early sale required a leading bid of at least ${money(last.required)}.`}</p></div></section>
       <aside class="side-panel stage-controls phase-controls"><div class="stage-heading"><span class="eyebrow">NEXT ROUND</span><h3>Next move</h3></div><p>${game.round===1?'Next: the manifest reveals how many objects are genuine.':'Next: one object’s identity and base price will be revealed.'}</p><button type="button" class="primary full" id="next-round">Open round ${game.round+1} →</button><div class="stage-support"><p>Previous bids are not charges or minimums. You may raise, lower, or skip your next bid.</p><p>${abilityStatus()}</p><p class="priority">${game.round===1?'Next-round early hammer: 1.3× the runner-up.':'Next round is final: highest bid wins.'}</p></div></aside></div>`;
   }
@@ -177,8 +180,8 @@
     return `<section class="action-dock dock-inspect" aria-label="Your auction controls"><div class="dock-context"><span class="eyebrow">YOUR AUCTION DESK</span><strong>Target: object ${String.fromCharCode(65+game.selected)}</strong><span class="small muted">Bids stay sealed until you confirm.</span></div><div class="dock-skill">${skillPanel}</div><div class="dock-primary">${E.getCash(game)<minimumBid()?'<button type="button" class="primary" id="pass-bid">Pass this round</button>':'<button type="button" class="primary" id="open-bidding">Prepare a bid →</button>'}<small>${game.reservePrice&&E.getCash(game)<minimumBid()?'Your cash is below the reserve. You can pass this round.':'Opening the bid form submits nothing. You can come back.'}</small></div></section>`;
   }
   function inspection() {
-    return `<div class="workbench-head"><div class="lot-heading"><div><h2 class="lot-title">The auction table</h2><span class="round-preview">${nextCluePreview()}</span></div></div><details class="round-rules"><summary>Round rules</summary><div class="round-rules-content"><p>${roundRule()}</p><p>Tie priority</p><p>${game.priority.map(bidderName).join(' → ')}</p></div></details></div>
-      ${reserveNotice()}<div class="workbench-grid"><section class="auction-table-column"><div class="crate"><div class="crate-top"><span>One crate / six objects</span><span>Choose an object to see its details.</span></div><div class="objects">${objectCards()}</div><a class="mobile-detail-link" href="#selected-object">Selected object details ↓</a></div>
+    return `<div class="workbench-head"><div class="lot-heading"><div><h2 class="lot-title">The auction table</h2><span class="round-preview">${nextCluePreview()}</span></div></div><div class="workbench-tools">${reserveNotice()}${Notes.buttonMarkup()}<details class="round-rules"><summary>Round rules</summary><div class="round-rules-content"><p>${roundRule()}</p><p>Tie priority</p><p>${game.priority.map(bidderName).join(' → ')}</p></div></details></div></div>
+      <div class="workbench-grid"><section class="auction-table-column"><div class="crate"><div class="crate-top"><span>One crate / six objects</span><span>Choose an object to see its details.</span></div><div class="objects">${objectCards()}</div><a class="mobile-detail-link" href="#selected-object">Selected object details ↓</a></div>
       </section><aside class="workbench-sidebar">${objectDetail()}</aside></div>${actionDock()}
       <div class="table-reference"><details class="known-register"><summary>Confirmed notes</summary>${confirmedNotes()}</details>${game.history.length?`<details class="previous-bids"><summary>Previous round bids</summary>${historyMarkup()}</details>`:''}${catalog()}${participants()}<details class="role-reference"><summary>Your role ability</summary><p>${E.ROLES[game.role].passive}</p></details>${session.rulesVersion<4?'<details class="rules-reference"><summary>Saved session rules</summary><p>This saved session keeps its original rules. New sessions use the updated balance.</p></details>':''}</div>`;
   }
@@ -209,7 +212,7 @@
     save();review.showModal();body.querySelector('#cancel-review').focus();
   }
   function truth() {
-    return `<div class="truth-grid">${game.items.map(item=>`<div class="truth-row"><div><p>${item.name}</p><small>${itemAttributes(item)}</small></div><strong>${item.base} base</strong></div>`).join('')}</div>`;
+    return `<div class="truth-grid">${game.items.map(item=>`<div class="truth-row"><span class="truth-art" aria-hidden="true">${itemArt(item,true)}</span><div><p>${item.name}</p><small>${itemAttributes(item)}</small></div><strong>${item.base} base</strong></div>`).join('')}</div>`;
   }
   function receiptHtml(receipt,preview) {
     const processed=(ids,label)=>ids?.length?`<p class="small muted processing-receipt"><span>${label}</span>${ids.map(id=>`<span style="display:block">${escape(game.items.find(item=>item.id===id).name)}</span>`).join('')}</p>`:'';
@@ -257,21 +260,48 @@
     const outcome=!game.winner?(game.reservePrice?'No bid met the reserve. Nobody pays.':'The final round had no bids. Nothing was charged.'):won?`You bought the crate for ${money(game.bid)} and ${game.receipt.profit<0?'lost':'made'} ${money(Math.abs(game.receipt.profit))}.`:game.passed?'You passed this crate. Your cash is unchanged.':`${bidderName(game.winner)} bought the crate. Your cash is unchanged.`;
     const total=session.cash-E.STARTING_CASH;
     const actions=session.ended?'<button type="button" class="primary" id="new-session">Start a new session →</button><button type="button" id="change-role">Choose a different role</button>':'<button type="button" class="primary" id="continue-session">Continue to the next auction →</button><button type="button" id="finish-session">Leave & settle session</button>';
-    return `<div class="result-heading"><span class="eyebrow">${session.ended?'SESSION FINISHED':'AUCTION SETTLED'}</span><h1>${session.ended?'Your session is settled.':'One crate down. Your next decision.'}</h1><p>${outcome}</p></div>
+    return `<div class="result-heading"><span class="eyebrow">${session.ended?'SESSION FINISHED':'AUCTION SETTLED'}</span><h1>${session.ended?'Your session is settled.':'One crate down. Your next decision.'}</h1><p>${outcome}</p></div>${valuationMarkup()}
       <div class="auction-layout phase-layout"><section><h3>${session.ended?'Final standings':'Current standings'}</h3><p class="small muted">Ranking uses cumulative cash across this session.</p><div class="score-list">${board.map(player=>`<div class="score-row ${player.id==='you'?'self':''}" ${player.id==='you'?'aria-label="Your session standing"':''}><span class="score-rank">${1+board.filter(other=>other.cash>player.cash).length}</span><span class="score-name">${player.name}<small>${E.ROLES[player.role].short}${player.id==='you'?' · You':''}</small></span><span class="score-cash">${money(player.cash)}<small class="${player.profit<0?'negative':'positive'}" style="display:block;font-size:11px;text-align:right">${signed(player.profit)} profit</small></span></div>`).join('')}</div>${ledgerHtml()}<details class="catalog"><summary>Reveal this crate & all bids</summary>${truth()}${historyMarkup()}</details></section>
       <aside class="side-panel stage-controls phase-controls"><div class="stage-heading"><span class="eyebrow">04 / SESSION RESULT</span><h3>Next move</h3></div><div class="session-total"><div class="receipt-line"><span>Current cash</span><strong>${money(session.cash)}</strong></div><div class="receipt-line"><span>Total profit</span><strong class="${total<0?'negative':'positive'}">${signed(total)}</strong></div><p>${session.history.length} ${session.history.length===1?'crate':'crates'} settled.</p></div><p>${session.ended?'Your final cash includes every completed auction. No extra payout is added.':'Carry your cash into another auction, or leave with your current balance.'}</p><div class="restart-row session-decisions">${actions}</div><p class="action-hint">${session.ended?'A new session starts everyone at 1,000 coins. This session’s result stays final.':'The next crate has fresh objects and ability uses. Everyone keeps their own current cash.'}</p><div id="session-error" class="error" role="alert"></div><details class="latest-receipt"><summary>Latest crate receipt</summary>${receiptHtml(game.receipt,false)}<p>Crate profit = sale proceeds + ability bonus − winning bid − processing fees.</p></details></aside></div>`;
   }
   function ledgerHtml() {
     return `<details class="catalog session-ledger"><summary>Session ledger · ${session.history.length} ${session.history.length===1?'crate':'crates'}</summary><div class="ledger-row ledger-header"><span>Auction</span><span>Buyer</span><span>Winning bid</span><span>Your profit</span><span>Your cash</span></div>${session.history.map(record=>`<div class="ledger-row"><span>${record.auctionNumber}</span><span>${record.winner?bidderName(record.winner):'No sale'}</span><span>${money(record.paid)}</span><span class="${record.profit<0?'negative':'positive'}">${signed(record.profit)}</span><span>${money(record.cash)}</span></div>`).join('')}</details>`;
   }
+  function valuationMarkup() {
+    if(!game.winner)return '';
+    const winningBid=game.history.at(-1)?.highest;
+    const players=[{id:'you',name:'You',role:game.role,theme:game.theme,cashBefore:E.getCash(game)},...game.bots.map((bot,index)=>({...bot,cashBefore:game.botStartingCash?.[index]??E.STARTING_CASH}))];
+    const winner=players.find(player=>player.id===game.winner);
+    let receipt=game.receipt;
+    if(game.winner!=='you') {
+      const plan=E.salePlan(winner.role,game.items,'special',winner.cashBefore-winningBid,{theme:winner.theme});
+      receipt={...plan,profit:plan.recovery-winningBid};
+    }
+    return Show.valuationMarkup({...E.valuationBoard(game.items,players,{winnerId:game.winner,winningBid,receipt}),localizeNames:true});
+  }
   function render() {
     document.body.classList.toggle('in-session',Boolean(session));
     document.body.classList.toggle('tabletop-mode',Boolean(session));
     document.body.dataset.phase=game?game.phase:'roles';
     main.innerHTML=!game?rolePicker():game.phase==='inspect'||game.phase==='bid'?inspection():game.phase==='round-summary'?roundSummary():game.phase==='dispose'?disposal():result();
-    if(session)main.insertAdjacentHTML('afterbegin',sessionBanner()+bidderSeats());
+    if(session)main.insertAdjacentHTML('afterbegin',sessionBanner()+bidderSeats()+(['inspect','bid','round-summary'].includes(game.phase)?Show.sourceMarkup(game.sourceId,E.SOURCES):''));
     L.localize(main);
     bind();
+    Tutorial.bind(document);
+    bindNotebook();
+    if(game) {
+      const last=game.history.at(-1);
+      const event=game.phase==='round-summary'?'round':game.phase==='dispose'?'hammer':game.phase==='result'?(game.winner==='you'?'settled':game.winner?'hammer':'round'):null;
+      Show.present(main,{key:`solo:${session.seed}:${session.auctionNumber}:${game.round}:${game.phase}`,event,bids:last?.bids,winnerName:game.winner?bidderName(game.winner):'',winningBid:last?.highest,selfProfit:game.phase==='result'?game.receipt?.profit:null,localizeNames:true});
+    }
+  }
+  function bindNotebook() {
+    let storage;
+    try { storage=window.localStorage; } catch { /* Notes still work in memory. */ }
+    Notes.bind(main,{key:game?`solo:${session.seed}:${session.auctionNumber}`:null,storage,lots:game?game.items.map((item,slot)=>{
+      const info=informationFor(slot),opened=['dispose','result'].includes(game.phase),known=opened||info.known;
+      return {slot,label:known?item.name:E.SHAPES[item.shape],known,source:opened?'Crate opened':info.source,range:E.catalogFor(item.shape,game),...(known?{base:item.base,genuine:item.genuine,condition:item.condition}:{})};
+    }):[]});
   }
   function bind() {
     main.querySelectorAll('[data-role]').forEach(button=>button.addEventListener('click',()=>{selectedRole=button.dataset.role;save();render();}));
@@ -310,6 +340,7 @@
     main.querySelector('#change-role')?.addEventListener('click',()=>{session=null;game=null;save();render();});
   }
   const help=document.getElementById('help');
+  Show.bindSoundToggle(document.getElementById('auction-sound'));
   const review=document.getElementById('action-review');
   review.addEventListener('close',()=>{if(!review.open)pendingAction=null;});
   document.getElementById('close-review').addEventListener('click',()=>review.close());

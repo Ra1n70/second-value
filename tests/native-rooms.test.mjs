@@ -113,7 +113,7 @@ function englishError(result, status) {
 }
 
 function noSecrets(view, credentials = []) {
-  const forbidden = new Set(['seed', 'token', 'tokens', 'hash', 'credentials', 'record_json', 'requests', 'requestIds', 'bidsByPlayer', 'serverState']);
+  const forbidden = new Set(['seed', 'token', 'tokens', 'hash', 'credentials', 'record_json', 'requests', 'requestIds', 'bidsByPlayer', 'serverState', 'cratePlayers', 'lastSeen', 'traffic']);
   const visit = value => {
     if (!value || typeof value !== 'object') return;
     for (const [key, child] of Object.entries(value)) {
@@ -147,7 +147,7 @@ test('new role choices and fees survive a simultaneous D1 sale replay without le
     await api.command(host, {type: 'bid', amount: (await api.view(host)).reservePrice, pass: false});
     await api.command(guest, {type: 'bid', amount: null, pass: true});
     const opened = await api.view(host);
-    assert.equal(opened.rulesVersion, 4);
+    assert.equal(opened.rulesVersion, 5);
     const remainingCash = 1000 - opened.winningBid;
     const expected = E.salePlan(role, opened.lots, 'special', remainingCash, {abilityIds: slots.map(slot => opened.lots[slot].id)});
     const saleCommand = {type: 'sell', turnId: opened.turnId, mode: 'special', repairSlots: [], pairSlots: [], abilitySlots: slots};
@@ -190,6 +190,41 @@ test('D1 keeps a public fixed reserve across restarts and rejects low bids witho
   assert.equal(unsold.winnerId, null);
   assert.equal(unsold.ledger[0].paid, 0);
   assert.ok(unsold.players.every(player => player.cash === 1000));
+});
+
+test('source and actual/hypothetical valuations persist in D1 and stay private until settlement', async t => {
+  const api = await harness(t);
+  const [host, guest] = await api.begin();
+  const started = await api.view(host);
+  assert.ok(Object.hasOwn(E.SOURCES, started.sourceId));
+  assert.equal(Object.hasOwn(started, 'valuation'), false);
+  assert.equal((await api.view(guest)).sourceId, started.sourceId);
+  await api.command(host, {type: 'bid', amount: started.reservePrice, pass: false});
+  await api.command(guest, {type: 'bid', amount: null, pass: true});
+  const opened = await api.view(host);
+  assert.equal(opened.phase, 'dispose');
+  assert.equal(Object.hasOwn(opened, 'valuation'), false);
+  await api.command(host, {type: 'sell', mode: 'ordinary', repairSlots: [], pairSlots: []});
+  const settled = await api.view(host);
+  noSecrets(settled, [host, guest]);
+  const actual = settled.valuation.rows.find(row => row.actual);
+  assert.equal(actual.id, host.playerId);
+  assert.equal(actual.recovery, settled.receipt.recovery);
+  assert.equal(actual.profit, settled.receipt.profit);
+  assert.equal(actual.cashBefore, 1000);
+  assert.equal(settled.valuation.rows.filter(row => row.actual).length, 1);
+  assert.equal(settled.sourceId, started.sourceId);
+  const balances = settled.players.map(player => player.cash);
+  await api.reopen();
+  assert.deepEqual((await api.view(host)).valuation, settled.valuation);
+  assert.deepEqual((await api.view(guest)).players.map(player => player.cash), balances);
+  for (const member of [host, guest]) await api.command(member, {type: 'ready', ready: true});
+  await api.command(host, {type: 'continue'});
+  const next = await api.view(host);
+  assert.equal(next.auctionNumber, 2);
+  assert.equal(Object.hasOwn(next, 'valuation'), false);
+  assert.ok(Object.hasOwn(E.SOURCES, next.sourceId));
+  noSecrets(next, [host, guest]);
 });
 
 test('native D1 persists credentials, private notes and a sealed bid across completely reopened handlers', async t => {
@@ -399,6 +434,70 @@ test('native API validation, same-origin checks and English errors leave game st
   const unsupported = await api.request(`/api/rooms/${host.roomCode}`, { method: 'POST', member: host });
   englishError(unsupported, 405);
   assert.equal(unsupported.headers.get('allow'), 'GET');
+});
+
+test('D1 presence crosses its exact threshold, survives reopening, and reconnects without changing gameplay', async t => {
+  const api = await harness(t);
+  const [host, guest] = await api.begin();
+  const first = await api.view(host), start = first.serverNow;
+  const readRecord = async () => JSON.parse((await api.db.prepare('SELECT record_json FROM auction_rooms WHERE code = ?').bind(host.roomCode).first()).record_json);
+  const before = await readRecord();
+  const initialRequests = Object.fromEntries(Object.entries(before.credentials).map(([id, seat]) => [id, seat.requests]));
+  assert.equal(Number.isFinite(start), true);
+  assert.ok(first.players.every(player => player.connected && player.offlineSince === null));
+  api.advance(14999);
+  let snapshot = await api.view(host);
+  assert.equal(snapshot.players.find(player => player.id === guest.playerId).connected, true);
+  assert.equal(snapshot.players.find(player => player.id === guest.playerId).offlineSince, null);
+  api.advance(1);
+  snapshot = await api.view(host);
+  const offline = snapshot.players.find(player => player.id === guest.playerId);
+  assert.equal(offline.connected, false);
+  assert.equal(offline.offlineSince, start + 15000);
+  assert.equal(snapshot.serverNow, start + 15000);
+  assert.equal(snapshot.revision, first.revision);
+  assert.equal(snapshot.turnId, first.turnId);
+  assert.ok(snapshot.players.every(player => player.cash === 1000 && !player.submitted));
+  const offlineRevision = snapshot.presenceRevision;
+  await api.reopen();
+  api.advance(10000);
+  snapshot = await api.view(host);
+  assert.equal(snapshot.players.find(player => player.id === guest.playerId).offlineSince, start + 15000);
+  assert.equal(snapshot.presenceRevision, offlineRevision, 'Elapsed time must not fabricate presence transitions.');
+  noSecrets(snapshot, [host, guest]);
+  const afterPresence = await readRecord();
+  assert.deepEqual(afterPresence.state, before.state, 'Presence polling cannot submit bids, change balances, or advance phases.');
+  assert.deepEqual(Object.fromEntries(Object.entries(afterPresence.credentials).map(([id, seat]) => [id, seat.requests])), initialRequests);
+  assert.ok(afterPresence.state.players.every(player => !Object.hasOwn(player, 'offlineSince')));
+  assert.equal(Object.hasOwn(afterPresence, 'serverNow'), false, 'Clock metadata is projection-only; no record migration is required.');
+  const returned = await api.view(guest);
+  assert.equal(returned.players.find(player => player.id === guest.playerId).connected, true);
+  assert.equal(returned.players.find(player => player.id === guest.playerId).offlineSince, null);
+  assert.ok(returned.presenceRevision > offlineRevision);
+  assert.deepEqual((await readRecord()).state, before.state);
+  assert.ok((await api.view(host)).players.every(player => player.connected && player.offlineSince === null));
+  noSecrets(returned, [host, guest]);
+});
+
+test('legacy room records need no recovery fields and incomplete presence has no invented offline time', async t => {
+  const api = await harness(t);
+  const host = await api.create(), guest = await api.join(host);
+  const stored = await api.db.prepare('SELECT record_json FROM auction_rooms WHERE code = ?').bind(host.roomCode).first();
+  const legacy = JSON.parse(stored.record_json);
+  assert.equal(Object.hasOwn(legacy, 'serverNow'), false);
+  assert.ok(legacy.state.players.every(player => !Object.hasOwn(player, 'offlineSince')));
+  // A record without a usable historical timestamp cannot truthfully give a duration.
+  delete legacy.credentials[guest.playerId].lastSeen;
+  await api.db.prepare('UPDATE auction_rooms SET record_json = ? WHERE code = ?').bind(JSON.stringify(legacy),host.roomCode).run();
+  await api.reopen();
+  const snapshot = await api.view(host), absent = snapshot.players.find(player => player.id === guest.playerId);
+  assert.equal(absent.connected, false);
+  assert.equal(absent.offlineSince, null);
+  assert.equal(Number.isFinite(snapshot.serverNow), true);
+  noSecrets(snapshot, [host, guest]);
+  const returned = await api.view(guest);
+  assert.equal(returned.players.find(player => player.id === guest.playerId).connected, true);
+  assert.equal(returned.players.find(player => player.id === guest.playerId).offlineSince, null);
 });
 
 test('room expiry and creation/join limits survive fresh handlers and reopening SQLite', async t => {
