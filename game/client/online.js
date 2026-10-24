@@ -166,7 +166,7 @@
   }
   function toolbar(inGame = false) {
     const view = state.view;
-    return `<div class="online-room-toolbar ${inGame ? 'in-game-toolbar' : ''}"><div class="online-room-heading"><span class="eyebrow">Room</span><strong class="online-room-code" data-no-localize>${escape(view.code)}</strong><span class="small muted">${view.players.filter(player => player.active).length} / 4 players</span></div><div class="toolbar-actions"><button type="button" id="online-copy">Copy invite</button>${view.can.leave ? '<button type="button" class="text-button" id="online-leave">Leave room</button>' : ''}</div></div>`;
+    return `<div class="online-room-toolbar ${inGame ? 'in-game-toolbar' : ''}"><div class="online-room-heading"><span class="eyebrow">Room</span><strong class="online-room-code" data-no-localize>${escape(view.code)}</strong><span class="small muted">${view.players.filter(player => player.active).length} / 4 players</span></div><div class="toolbar-actions">${inGame&&['dispose','result','ended'].includes(view.phase)?Notes.buttonMarkup():''}<button type="button" id="online-copy">Copy invite</button>${view.can.leave ? '<button type="button" class="text-button" id="online-leave">Leave room</button>' : ''}</div></div>`;
   }
   function recoveryPanel() {
     const view = state.view;
@@ -338,7 +338,13 @@
     updateRecoveryClocks();
     let noteStorage;
     try { noteStorage=window.sessionStorage; } catch { /* Notes still work in memory. */ }
-    Notes.bind(main,{key:view&&view.auctionNumber>0?`room:${view.code}:${view.selfId}:${view.auctionNumber}`:null,storage:noteStorage,scope:'tab',lots:view?.lots.map(lot=>({slot:lot.slot,label:lot.known?lot.name:E.SHAPES[lot.shape],known:lot.known,source:lot.source,range:lot.range,...(lot.known?{base:lot.base,genuine:lot.genuine,condition:lot.condition}:{})}))||[]});
+    let settlement=null;
+    if(view&&['result','ended'].includes(view.phase)) {
+      if(!view.winnerId)settlement={sold:false};
+      else if(view.receipt)settlement={sold:true,winningBid:view.winningBid,recovery:view.receipt.recovery,youWon:view.winnerId===view.selfId};
+    }
+    const decision=view?{round:view.round,editable:view.phase==='auction'&&!reconnecting&&!state.busy,settlement}:null;
+    Notes.bind(main,{key:view&&view.auctionNumber>0?`room:${view.code}:${view.selfId}:${view.auctionNumber}`:null,storage:noteStorage,scope:'tab',decision,lots:view?.lots.map(lot=>({slot:lot.slot,label:lot.known?lot.name:E.SHAPES[lot.shape],known:lot.known,source:lot.source,range:lot.range,...(lot.known?{base:lot.base,genuine:lot.genuine,condition:lot.condition}:{})}))||[]});
     if (state.busy) main.querySelectorAll('button,input').forEach(element => element.disabled = true);
     if (reconnecting) main.querySelectorAll('#online-ready,#online-start,#online-next,#online-continue,#online-finish,#online-leave,#online-inspect,#online-withdraw,#online-sell,#online-pass,#online-bid-form button[type="submit"],[data-online-role],[data-online-theme]').forEach(element => element.disabled = true);
     if (focusId) {

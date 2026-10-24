@@ -227,7 +227,7 @@
     const preview={...plan,paid:game.bid,profit:plan.recovery-game.bid,cash:E.getCash(game)-game.bid+plan.recovery};
     const specialLabel=game.role==='restorer'?'Repair selected objects':game.role==='collector'?'Deliver selected collection':E.ROLES[game.role].skill;
     const selection=game.role==='restorer'?repairSelection():game.role==='collector'?pairSelection():abilitySelection();
-    return `<div class="workbench-head"><div><span class="eyebrow">SOLD TO YOU · ${money(game.bid)} COINS</span><h2 class="lot-title">Choose how to sell</h2></div></div>
+    return `<div class="workbench-head"><div><span class="eyebrow">SOLD TO YOU · ${money(game.bid)} COINS</span><h2 class="lot-title">Choose how to sell</h2></div><div class="workbench-tools">${Notes.buttonMarkup()}</div></div>
       <div class="auction-layout phase-layout"><section>${truth()}<div class="sale-options">${game.role!=='appraiser'?`<button type="button" data-sale="special" aria-pressed="${saleMode==='special'}" class="sale-option"><span>${specialLabel}<small>${game.role==='restorer'?'Choose up to two repairs. Fees must be funded before each repair.':game.role==='collector'?'Choose one genuine pair in your locked theme, with different identities and categories.':abilityInstruction()}</small></span></button>`:''}<button type="button" data-sale="ordinary" aria-pressed="${saleMode==='ordinary'}" class="sale-option"><span>Sell at ordinary prices<small>Every role receives the same base prices.</small></span><span>${money(ordinary.recovery)} after fees</span></button></div>${saleMode==='special'?selection:''}<p class="small muted" style="margin-top:15px">All objects are sold now. Your cash carries into the next auction; item storage comes later.</p><details class="previous-bids"><summary>Previous round bids</summary>${historyMarkup()}${participants(true)}</details></section>
       <aside class="side-panel stage-controls phase-controls"><div class="stage-heading"><span class="eyebrow">03 / PROCESS & SELL</span><h3>Your settlement</h3></div><p>Review processing choices, then settle this crate.</p>${selectionError?'<p class="selection-warning">Complete a valid selection to see its receipt. Ordinary sale totals are shown below.</p>':''}${receiptHtml(preview,true)}${netGainMarkup(plan.recovery-ordinary.recovery)}<button type="button" class="primary full" id="confirm-sale" ${selectionError?'disabled':''}>Confirm sale & settle crate →</button><p class="action-hint">Your chosen sale can make a profit or a loss. The purchase price is already locked.</p><div id="sale-error" class="error" role="alert">${escape(selectionError)}</div></aside></div>`;
   }
@@ -260,7 +260,7 @@
     const outcome=!game.winner?(game.reservePrice?'No bid met the reserve. Nobody pays.':'The final round had no bids. Nothing was charged.'):won?`You bought the crate for ${money(game.bid)} and ${game.receipt.profit<0?'lost':'made'} ${money(Math.abs(game.receipt.profit))}.`:game.passed?'You passed this crate. Your cash is unchanged.':`${bidderName(game.winner)} bought the crate. Your cash is unchanged.`;
     const total=session.cash-E.STARTING_CASH;
     const actions=session.ended?'<button type="button" class="primary" id="new-session">Start a new session →</button><button type="button" id="change-role">Choose a different role</button>':'<button type="button" class="primary" id="continue-session">Continue to the next auction →</button><button type="button" id="finish-session">Leave & settle session</button>';
-    return `<div class="result-heading"><span class="eyebrow">${session.ended?'SESSION FINISHED':'AUCTION SETTLED'}</span><h1>${session.ended?'Your session is settled.':'One crate down. Your next decision.'}</h1><p>${outcome}</p></div>${valuationMarkup()}
+    return `<div class="result-heading workbench-head"><div><span class="eyebrow">${session.ended?'SESSION FINISHED':'AUCTION SETTLED'}</span><h1>${session.ended?'Your session is settled.':'One crate down. Your next decision.'}</h1><p>${outcome}</p></div><div class="workbench-tools">${Notes.buttonMarkup()}</div></div>${valuationMarkup()}
       <div class="auction-layout phase-layout"><section><h3>${session.ended?'Final standings':'Current standings'}</h3><p class="small muted">Ranking uses cumulative cash across this session.</p><div class="score-list">${board.map(player=>`<div class="score-row ${player.id==='you'?'self':''}" ${player.id==='you'?'aria-label="Your session standing"':''}><span class="score-rank">${1+board.filter(other=>other.cash>player.cash).length}</span><span class="score-name">${player.name}<small>${E.ROLES[player.role].short}${player.id==='you'?' · You':''}</small></span><span class="score-cash">${money(player.cash)}<small class="${player.profit<0?'negative':'positive'}" style="display:block;font-size:11px;text-align:right">${signed(player.profit)} profit</small></span></div>`).join('')}</div>${ledgerHtml()}<details class="catalog"><summary>Reveal this crate & all bids</summary>${truth()}${historyMarkup()}</details></section>
       <aside class="side-panel stage-controls phase-controls"><div class="stage-heading"><span class="eyebrow">04 / SESSION RESULT</span><h3>Next move</h3></div><div class="session-total"><div class="receipt-line"><span>Current cash</span><strong>${money(session.cash)}</strong></div><div class="receipt-line"><span>Total profit</span><strong class="${total<0?'negative':'positive'}">${signed(total)}</strong></div><p>${session.history.length} ${session.history.length===1?'crate':'crates'} settled.</p></div><p>${session.ended?'Your final cash includes every completed auction. No extra payout is added.':'Carry your cash into another auction, or leave with your current balance.'}</p><div class="restart-row session-decisions">${actions}</div><p class="action-hint">${session.ended?'A new session starts everyone at 1,000 coins. This session’s result stays final.':'The next crate has fresh objects and ability uses. Everyone keeps their own current cash.'}</p><div id="session-error" class="error" role="alert"></div><details class="latest-receipt"><summary>Latest crate receipt</summary>${receiptHtml(game.receipt,false)}<p>Crate profit = sale proceeds + ability bonus − winning bid − processing fees.</p></details></aside></div>`;
   }
@@ -298,7 +298,23 @@
   function bindNotebook() {
     let storage;
     try { storage=window.localStorage; } catch { /* Notes still work in memory. */ }
-    Notes.bind(main,{key:game?`solo:${session.seed}:${session.auctionNumber}`:null,storage,lots:game?game.items.map((item,slot)=>{
+    let settlement=null;
+    if(game?.phase==='result') {
+      if(!game.winner)settlement={sold:false};
+      else {
+        const winningBid=game.history.at(-1).highest;
+        // The solo receipt records the human balance, so a computer buyer's
+        // real recovery is derived with the same funded plan as its standing.
+        let recovery=game.receipt.recovery;
+        if(game.winner!=='you') {
+          const index=game.bots.findIndex(bot=>bot.id===game.winner),buyer=game.bots[index];
+          recovery=E.salePlan(buyer.role,game.items,'special',(game.botStartingCash?.[index]??E.STARTING_CASH)-winningBid,{theme:buyer.theme}).recovery;
+        }
+        settlement={sold:true,winningBid,recovery,youWon:game.winner==='you'};
+      }
+    }
+    const decision=game?{round:game.round,editable:['inspect','bid'].includes(game.phase),settlement}:null;
+    Notes.bind(main,{key:game?`solo:${session.seed}:${session.auctionNumber}`:null,storage,decision,lots:game?game.items.map((item,slot)=>{
       const info=informationFor(slot),opened=['dispose','result'].includes(game.phase),known=opened||info.known;
       return {slot,label:known?item.name:E.SHAPES[item.shape],known,source:opened?'Crate opened':info.source,range:E.catalogFor(item.shape,game),...(known?{base:item.base,genuine:item.genuine,condition:item.condition}:{})};
     }):[]});
