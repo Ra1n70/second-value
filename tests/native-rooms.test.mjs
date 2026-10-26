@@ -129,6 +129,101 @@ function noSecrets(view, credentials = []) {
   }
 }
 
+test('computer seats persist without credentials, expose no sealed quote and stay out of offline recovery', async t => {
+  const api = await harness(t), host = await api.create(), guest = await api.join(host);
+  englishError(await api.command(guest, {type: 'add-bot', style: 'bold'}), 409);
+  assert.equal((await api.command(host, {type: 'add-bot', style: 'steady'})).status, 200);
+  let view = await api.view(host), computer = view.players.find(player => player.isBot);
+  assert.ok(computer && computer.ready && computer.connected);
+  assert.equal(computer.botStyle, 'steady');
+  let stored = await api.db.prepare('SELECT record_json FROM auction_rooms WHERE code = ?').bind(host.roomCode).first();
+  let record = JSON.parse(stored.record_json);
+  assert.deepEqual(Object.keys(record.credentials).sort(), [host.playerId, guest.playerId].sort());
+  englishError(await api.request(`/api/rooms/${host.roomCode}`, {token: 'a'.repeat(43)}), 401);
+  for (const member of [host, guest]) assert.equal((await api.command(member, {type: 'ready', ready: true})).status, 200);
+  assert.equal((await api.command(host, {type: 'start'})).status, 200);
+  view = await api.view(host);
+  assert.equal(view.phase, 'auction');
+  assert.equal(view.players.find(player => player.id === computer.id).submitted, true);
+  assert.equal(view.self.bid, null);
+  assert.ok(view.players.every(player => !('bid' in player) && !('amount' in player) && !('inspected' in player)));
+  noSecrets(view, [host, guest]);
+  await api.reopen();
+  assert.deepEqual(await api.view(host), view);
+  api.advance(16000);
+  const recovered = await api.view(host);
+  assert.equal(recovered.players.find(player => player.id === computer.id).connected, true);
+  assert.equal(recovered.players.find(player => player.id === computer.id).offlineSince, null);
+  assert.equal(recovered.players.find(player => player.id === guest.playerId).connected, false);
+  stored = await api.db.prepare('SELECT record_json FROM auction_rooms WHERE code = ?').bind(host.roomCode).first();
+  record = JSON.parse(stored.record_json);
+  assert.deepEqual(Object.keys(record.credentials).sort(), [host.playerId, guest.playerId].sort());
+});
+
+test('concurrent computer additions respect four-seat capacity and request replays cannot re-add removed seats', async t => {
+  const api = await harness(t), host = await api.create();
+  await api.command(host, {type: 'add-bot', style: 'steady'});
+  await api.command(host, {type: 'add-bot', style: 'patient'});
+  const turnId = (await api.view(host)).turnId, id = requestId(), otherId = requestId();
+  const command = {type: 'add-bot', style: 'bold', turnId};
+  const results = await api.race(host.roomCode, [() => api.action(host, command, id), () => api.action(host, command, otherId)]);
+  assert.deepEqual(results.map(result => result.status).sort(), [200, 409]);
+  let view = await api.view(host);
+  assert.equal(view.players.filter(player => player.active).length, 4);
+  const computer = view.players.find(player => player.isBot && player.botStyle === 'bold');
+  assert.ok(computer);
+  const replayId = results[0].status === 200 ? id : otherId;
+  assert.equal((await api.command(host, {type: 'remove-bot', playerId: computer.id})).status, 200);
+  const afterRemoval = await api.view(host);
+  assert.equal((await api.action(host, command, replayId)).status, 200);
+  assert.deepEqual(await api.view(host), afterRemoval);
+  const sameId = requestId(), sameCommand = {type: 'add-bot', style: 'steady', turnId: (await api.view(host)).turnId};
+  const same = await api.race(host.roomCode, [() => api.action(host, sameCommand, sameId), () => api.action(host, sameCommand, sameId)]);
+  assert.deepEqual(same.map(result => result.status), [200, 200]);
+  assert.equal((await api.view(host)).players.filter(player => player.active).length, 4);
+});
+
+test('a bot-winning final human submission races safely, sells once and restores its receipt after restart', async t => {
+  const api = await harness(t), host = await api.create();
+  assert.equal((await api.command(host, {type: 'add-bot', style: 'bold'})).status, 200);
+  await api.command(host, {type: 'ready', ready: true});
+  await api.command(host, {type: 'start'});
+  const before = await api.view(host), computer = before.players.find(player => player.isBot);
+  // Fix only the computer's sealed quote to make the CAS accounting fixture deterministic.
+  const stored = await api.db.prepare('SELECT record_json FROM auction_rooms WHERE code = ?').bind(host.roomCode).first();
+  const record = JSON.parse(stored.record_json), bidder = record.state.players.find(player => player.id === computer.id);
+  const amount = Math.max(200, before.reservePrice);
+  bidder.bid = {amount, pass: false};
+  await api.db.prepare('UPDATE auction_rooms SET record_json = ? WHERE code = ?').bind(JSON.stringify(record), host.roomCode).run();
+  const id = requestId(), command = {type: 'bid', amount: null, pass: true, turnId: before.turnId};
+  const results = await api.race(host.roomCode, [() => api.action(host, command, id), () => api.action(host, command, id)]);
+  assert.deepEqual(results.map(result => result.status), [200, 200]);
+  const settled = await api.view(host), winner = settled.players.find(player => player.id === computer.id);
+  assert.equal(settled.phase, 'result');
+  assert.equal(settled.winnerId, computer.id);
+  assert.equal(settled.history.length, 1);
+  assert.equal(settled.ledger.length, 1);
+  assert.equal(settled.self.cash, 1000);
+  const plan = E.salePlan(computer.role, settled.lots, 'special', 1000 - amount, {theme: computer.theme});
+  assert.equal(settled.receipt.recovery, plan.recovery);
+  assert.equal(settled.receipt.cost, plan.cost);
+  assert.equal(winner.cash, 1000 - amount + plan.recovery);
+  assert.equal(winner.ready, true);
+  noSecrets(settled, [host]);
+  await api.reopen();
+  assert.deepEqual(await api.view(host), settled);
+  assert.equal((await api.action(host, command, id)).status, 200);
+  assert.deepEqual(await api.view(host), settled);
+  englishError(await api.action(host, command), 409);
+  await api.command(host, {type: 'ready', ready: true});
+  assert.equal((await api.command(host, {type: 'continue'})).status, 200);
+  const next = await api.view(host);
+  assert.equal(next.auctionNumber, 2);
+  assert.equal(next.players.find(player => player.id === computer.id).cash, winner.cash);
+  assert.equal(next.players.find(player => player.id === computer.id).submitted, true);
+  assert.equal(next.ledger.length, 1);
+});
+
 test('new role choices and fees survive a simultaneous D1 sale replay without leaking candidate targets', async t => {
   const api = await harness(t);
   const catalogIds = ['map-print', 'replica-camera', 'studio-camera', 'star-chart', 'travel-radio', 'crew-badge'];

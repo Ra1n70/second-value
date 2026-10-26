@@ -7,10 +7,15 @@ const source = await readFile(new URL('../game/client/auction-show.js', import.m
 
 function setup(options = {}) {
   const scenes = [], timers = new Map(), stored = new Map(), languageListeners = [];
-  let nextTimer = 0, localized = 0, audioCreated = 0, audioStarts = 0, audioStops = 0;
+  const documentListeners = new Map(), sources = [], requests = [], pendingFetch = [], musicInstances = [], contexts = [];
+  let nextTimer = 0, localized = 0, audioCreated = 0, audioStarts = 0, audioStops = 0, decodeCalls = 0;
+  if(options.savedSound)stored.set('secondvalue:auction-sound','on');
+  if(options.savedMusic)stored.set('secondvalue:auction-music','on');
   const doc = {
+    hidden:false,
     body:{appendChild(node){scenes.push(node);node.isConnected=true;}},
-    addEventListener(){},
+    addEventListener(event,callback){if(!documentListeners.has(event))documentListeners.set(event,[]);documentListeners.get(event).push(callback);},
+    fire(event,target){for(const callback of documentListeners.get(event)||[])callback({target});},
     createElement(){return element();}
   };
   function element() {
@@ -24,10 +29,18 @@ function setup(options = {}) {
     };
   }
   class AudioContext {
-    constructor(){audioCreated++;this.currentTime=0;this.destination={};}
-    resume(){return Promise.resolve();}
-    createOscillator(){return {frequency:{setValueAtTime(){}},connect(){},disconnect(){},start(){audioStarts++;},stop(){audioStops++;}};}
+    constructor(){audioCreated++;this.currentTime=0;this.destination={};this.state='suspended';this.listeners={};contexts.push(this);}
+    addEventListener(event,fn){this.listeners[event]=fn;}
+    resume(){if(options.rejectResume)return Promise.reject(new Error('blocked'));this.state='running';return Promise.resolve();}
+    decodeAudioData(){decodeCalls++;return options.rejectDecode?Promise.reject(new Error('bad audio')):Promise.resolve({duration:.5,decoded:decodeCalls});}
+    createBufferSource(){const source={connect(){},disconnect(){},start(at){audioStarts++;source.at=at;},stop(){audioStops++;}};sources.push(source);return source;}
     createGain(){return {gain:{setValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){},disconnect(){}};}
+  }
+  class Audio {
+    constructor(){this.paused=true;this.plays=0;this.pauses=0;this.listeners={};musicInstances.push(this);}
+    addEventListener(event,fn){this.listeners[event]=fn;}
+    play(){this.plays++;if(options.rejectPlay)return Promise.reject(new Error('autoplay blocked'));if(options.deferPlay)return new Promise((resolve,reject)=>{this.resolve=()=>{this.paused=false;resolve();};this.reject=reject;});this.paused=false;return Promise.resolve();}
+    pause(){this.paused=true;this.pauses++;}
   }
   const context = {
     module:{exports:{}},document:doc,
@@ -39,11 +52,13 @@ function setup(options = {}) {
     matchMedia(){return {matches:Boolean(options.reduced)};},
     setTimeout(callback){const id=++nextTimer;timers.set(id,callback);return id;},
     clearTimeout(id){timers.delete(id);},
-    ...(options.audio ? {AudioContext} : {})
+    ...(options.audio ? {AudioContext,fetch(url){requests.push(url);const response={ok:!options.rejectFetch,arrayBuffer(){return Promise.resolve(new ArrayBuffer(1));}};return options.deferFetch?new Promise(resolve=>pendingFetch.push(()=>resolve(response))):Promise.resolve(response);}} : {}),
+    ...(options.music ? {Audio} : {})
   };
   runInNewContext(source,context);
-  return {show:context.module.exports,element,scenes,timers,stored,languageListeners,get localized(){return localized;},get audioCreated(){return audioCreated;},get audioStarts(){return audioStarts;},get audioStops(){return audioStops;}};
+  return {show:context.module.exports,element,scenes,timers,stored,languageListeners,documentListeners,doc,sources,requests,pendingFetch,musicInstances,contexts,get localized(){return localized;},get audioCreated(){return audioCreated;},get audioStarts(){return audioStarts;},get audioStops(){return audioStops;},get decodeCalls(){return decodeCalls;}};
 }
+const flush=async()=>{for(let count=0;count<24;count++)await Promise.resolve();};
 
 test('public source evidence contains no extra crate facts and escapes the supplied source copy', () => {
   const {show} = setup();
@@ -128,26 +143,119 @@ test('desktop valuation fills its width for two, three, and four seats', () => {
   }
 });
 
-test('audio is off until a user enables it, can be muted immediately, and optional storage failures do not break play', () => {
+test('recorded audio loads only after enable, previews once, and mute stops scheduled sources immediately', async () => {
   const runtime = setup({audio:true,blockStorage:true}), button = runtime.element(), container = runtime.element();
   runtime.show.bindSoundToggle(button);
   runtime.show.bindSoundToggle(button);
   assert.equal(runtime.show.soundEnabled,false);
   assert.equal(runtime.audioCreated,0);
+  assert.equal(runtime.requests.length,0);
   runtime.show.present(container,{key:'inspect',event:null});
   runtime.show.present(container,{key:'silent-round',event:'round'});
   assert.equal(runtime.audioStarts,0);
   button.click();
+  await flush();
   assert.equal(runtime.show.soundEnabled,true);
   assert.equal(runtime.audioCreated,1);
+  assert.equal(runtime.requests.length,3);
+  assert.equal(runtime.decodeCalls,3);
+  assert.equal(runtime.audioStarts,1,'the enable click previews the loaded paper sample');
   assert.equal(button.getAttribute('aria-pressed'),'true');
   runtime.show.present(container,{key:'sound-hammer',event:'hammer',winningBid:100});
-  assert.equal(runtime.audioStarts,4);
+  assert.equal(runtime.audioStarts,3);
+  assert.equal(runtime.sources.at(-1).at,.47,'the gavel is scheduled with the hammer animation');
   const beforeMute=runtime.audioStops;
   button.click();
   assert.equal(runtime.show.soundEnabled,false);
   assert.equal(button.getAttribute('aria-pressed'),'false');
-  assert.equal(runtime.audioStops-beforeMute,4);
+  assert.equal(runtime.audioStops-beforeMute,3,'future gavel sources are stopped too');
   runtime.show.present(container,{key:'silent-settled',event:'settled',selfProfit:50});
-  assert.equal(runtime.audioStarts,4);
+  assert.equal(runtime.audioStarts,3);
+  button.click();await flush();
+  assert.equal(runtime.requests.length,3,'re-enabling reuses the decoded samples');
+  assert.equal(runtime.decodeCalls,3);
+});
+
+test('late sample loading cannot replay an auction event or an enable preview cancelled by mute',async()=>{
+  const runtime=setup({audio:true,deferFetch:true}),button=runtime.element(),container=runtime.element();
+  runtime.show.bindSoundToggle(button);runtime.show.present(container,{key:'initial'});button.click();await flush();
+  runtime.show.present(container,{key:'hammer',event:'hammer'});
+  assert.equal(runtime.audioStarts,0);
+  button.click();runtime.pendingFetch.forEach(resolve=>resolve());await flush();
+  assert.equal(runtime.audioStarts,0,'neither the old event nor cancelled preview plays after load');
+  button.click();await flush();assert.equal(runtime.audioStarts,1,'only the new explicit enable previews');
+  runtime.show.present(container,{key:'hammer',event:'hammer'});
+  assert.equal(runtime.audioStarts,1,'polling still cannot replay the same auction');
+});
+
+test('an audio device suspension shows a paused control and the next gesture resumes cached samples',async()=>{
+  const runtime=setup({audio:true}),button=runtime.element();runtime.show.bindSoundToggle(button);button.click();await flush();
+  const context=runtime.contexts[0];context.state='suspended';context.listeners.statechange();
+  assert.equal(runtime.show.soundEnabled,false);assert.match(button.innerHTML,/Sound paused/);
+  runtime.doc.fire('pointerdown');await flush();
+  assert.equal(runtime.show.soundEnabled,true);assert.equal(runtime.requests.length,3);assert.equal(runtime.audioCreated,1);
+});
+
+test('an explicit enable retries failed samples while sharing pending retries and retaining successful buffers',async()=>{
+  const options={audio:true,rejectFetch:true},runtime=setup(options),button=runtime.element();
+  runtime.show.bindSoundToggle(button);button.click();await flush();
+  assert.equal(runtime.show.soundEnabled,false);assert.equal(runtime.requests.length,3);assert.equal(runtime.audioStarts,0);
+  options.rejectFetch=false;options.deferFetch=true;button.click();await flush();
+  assert.equal(runtime.requests.length,6,'the user retries the three failed requests without a reload');
+  button.click();button.click();await flush();
+  assert.equal(runtime.requests.length,6,'re-enabling during loading shares the in-flight retries');
+  runtime.pendingFetch.forEach(resolve=>resolve());await flush();
+  assert.equal(runtime.show.soundEnabled,true);assert.equal(runtime.audioStarts,1,'only the current enable gets its preview');
+  assert.equal(runtime.decodeCalls,3);assert.equal(runtime.audioCreated,1);
+  button.click();button.click();await flush();
+  assert.equal(runtime.requests.length,6,'successful decoded samples stay cached');assert.equal(runtime.audioStarts,2);
+});
+
+test('unavailable, blocked, failed downloads and failed decoding leave audio off without breaking presentation',async()=>{
+  for(const options of [{},{audio:true,rejectResume:true},{audio:true,rejectFetch:true},{audio:true,rejectDecode:true}]){
+    const runtime=setup(options),button=runtime.element(),container=runtime.element();runtime.show.bindSoundToggle(button);button.click();await flush();
+    assert.equal(runtime.show.soundEnabled,false);assert.equal(button.getAttribute('aria-pressed'),'false');assert.equal(runtime.audioStarts,0);
+    runtime.show.present(container,{key:'initial'});assert.equal(runtime.show.present(container,{key:'round',event:'round'}),true);
+  }
+});
+
+test('music is independently opt in, loops at low volume and survives language updates without duplicate playback',async()=>{
+  const runtime=setup({audio:true,music:true}),sound=runtime.element(),music=runtime.element();
+  runtime.show.bindSoundToggle(sound);runtime.show.bindMusicToggle(music);runtime.show.bindMusicToggle(music);
+  assert.equal(runtime.musicInstances.length,0);assert.equal(runtime.requests.length,0);assert.equal(runtime.show.musicEnabled,false);
+  music.click();await flush();const track=runtime.musicInstances[0];
+  assert.equal(runtime.show.musicEnabled,true);assert.equal(runtime.show.soundEnabled,false);assert.equal(runtime.requests.length,0);
+  assert.equal(track.src,'/assets/audio/old-harbor-v1.mp3');assert.equal(track.loop,true);assert.equal(track.preload,'none');assert.equal(track.volume,.18);
+  runtime.languageListeners.forEach(fn=>fn());assert.equal(track.plays,1);assert.equal(runtime.musicInstances.length,1);
+  sound.click();await flush();assert.equal(runtime.show.musicEnabled,true);assert.equal(track.plays,1);
+  music.click();assert.equal(track.paused,true);assert.equal(runtime.show.musicEnabled,false);assert.equal(runtime.show.soundEnabled,true);
+});
+
+test('saved on preferences wait for a gesture and visibility pauses and resumes the same music instance',async()=>{
+  const runtime=setup({audio:true,music:true,savedSound:true,savedMusic:true}),sound=runtime.element(),music=runtime.element();
+  runtime.show.bindSoundToggle(sound);runtime.show.bindMusicToggle(music);
+  assert.match(sound.innerHTML,/Sound paused/);assert.match(music.innerHTML,/Music paused/);
+  assert.equal(runtime.musicInstances.length,0);assert.equal(runtime.audioCreated,0);assert.equal(runtime.requests.length,0);
+  runtime.doc.fire('pointerdown',{closest(){return {};}});await flush();
+  assert.equal(runtime.musicInstances.length,0,'toggle capture cannot race the click handler');
+  runtime.doc.fire('pointerdown');await flush();
+  assert.equal(runtime.show.musicEnabled,true);assert.equal(runtime.show.soundEnabled,true);assert.equal(runtime.audioStarts,0,'restoring preferences does not chime');
+  const track=runtime.musicInstances[0];runtime.doc.hidden=true;runtime.doc.fire('visibilitychange');
+  assert.equal(track.paused,true);assert.equal(runtime.show.musicEnabled,false);assert.match(music.innerHTML,/Music paused/);
+  runtime.doc.hidden=false;runtime.doc.fire('visibilitychange');await flush();
+  assert.equal(track.plays,2);assert.equal(runtime.musicInstances.length,1);assert.equal(runtime.show.musicEnabled,true);
+  assert.equal(runtime.documentListeners.get('pointerdown').length,1,'both controls share one gesture listener');
+});
+
+test('blocked or failed music never claims to be playing and a late play promise cannot undo mute',async()=>{
+  for(const options of [{},{music:true,rejectPlay:true}]){
+    const runtime=setup(options),button=runtime.element();runtime.show.bindMusicToggle(button);button.click();await flush();
+    assert.equal(runtime.show.musicEnabled,false);assert.equal(button.getAttribute('aria-pressed'),'false');assert.match(button.innerHTML,/Music off/);
+  }
+  const runtime=setup({music:true,deferPlay:true}),button=runtime.element();runtime.show.bindMusicToggle(button);button.click();
+  assert.equal(runtime.show.musicEnabled,false,'pending autoplay is not reported as playing');
+  const track=runtime.musicInstances[0];button.click();track.resolve();await flush();
+  assert.equal(runtime.show.musicEnabled,false);assert.equal(track.paused,true);
+  button.click();track.resolve();await flush();assert.equal(runtime.show.musicEnabled,true);
+  track.listeners.error();assert.equal(runtime.show.musicEnabled,false);assert.equal(track.paused,true);
 });

@@ -2,6 +2,8 @@
   'use strict';
   const E = window.SecondValue, Art = window.SecondValueArt, L = window.SecondValueOnlineLocale;
   const Show = window.SecondValueShow;
+  const Clues = window.SecondValueRoundClues;
+  const SaleCompare = window.SecondValueSaleComparison;
   const Notes = window.SecondValueNotebook;
   const Recovery = window.SecondValueRecovery, Tutorial = window.SecondValueTutorial;
   const main = document.getElementById('online-game'), review = document.getElementById('online-review');
@@ -9,7 +11,7 @@
   const money = value => Number(value || 0).toLocaleString('en-US');
   const signed = value => (value > 0 ? '+' : value < 0 ? '−' : '') + money(Math.abs(value || 0));
   const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-  const state = {credentials:null,view:null,error:'',transientError:false,connection:'Connecting…',busy:false,polling:false,selected:0,draftBid:'300',draftTurn:null,bidOpen:false,repairSlots:[],pairSlots:[],abilitySlots:[],saleMode:'ordinary',saleTurn:null,name:'',role:'restorer',theme:'harbor',roomCode:new URLSearchParams(location.search).get('room') || ''};
+  const state = {credentials:null,view:null,error:'',transientError:false,connection:'Connecting…',busy:false,polling:false,selected:0,draftBid:'300',draftTurn:null,bidOpen:false,repairSlots:[],pairSlots:[],abilitySlots:[],saleMode:'ordinary',saleTurn:null,name:'',role:'restorer',theme:'harbor',botStyle:'steady',roomCode:new URLSearchParams(location.search).get('room') || ''};
   let timer = null;
   let syncEpoch = 0;
   let pendingReview = null;
@@ -42,6 +44,13 @@
   }
   const art = lot => sprite(Art.visualFor(lot, lot.known));
   const userName = player => `<span data-user-text>${escape(player?.name || '—')}</span>`;
+  const botStyles = {steady:'Steady',bold:'Bold',patient:'Patient'};
+  const botStyleHints = {steady:'Balances price and risk.',bold:'Takes more risk when the value is uncertain.',patient:'Waits for clearer clues, then bids with confidence.'};
+  function computerBadge(player, withStyle = true) {
+    if (!player?.isBot) return '';
+    const style = botStyles[player.botStyle];
+    return `<span class="online-computer-badge"><span>Computer</span>${withStyle && style ? ` · <span>${style}</span>` : ''}</span>`;
+  }
   const selfPlayer = () => state.view?.players.find(player => player.id === state.view.selfId);
   const playerById = id => state.view?.players.find(player => player.id === id);
   const letter = slot => String.fromCharCode(65 + slot);
@@ -91,7 +100,7 @@
     }
     if (!view.lots.some(lot => lot.slot === state.selected)) state.selected = view.lots[0]?.slot || 0;
     state.view = view;
-    if (view.phase !== 'auction' && pendingReview && ['bid','withdraw'].includes(pendingReview.type) && review.open) review.close();
+    if (pendingReview && review.open && (pendingReview.turnId !== view.turnId || view.phase !== 'auction' && ['bid','withdraw'].includes(pendingReview.type))) review.close();
     persist();
     // A server clock heartbeat must not replace a bid input, review, or notebook.
     if (Recovery.stableSignature(previous) !== Recovery.stableSignature(view)) render();
@@ -162,7 +171,7 @@
     finally { state.busy = false; render(); if (state.credentials) poll(); }
   }
   function entry() {
-    return `<section class="online-entry"><div><span class="eyebrow">SHARE A TABLE</span><h1><span>Your friends.</span><br><span>Their secret bids.</span></h1><p>Invite your crew to the Old Harbor. One shared crate, different talents, and a reason to think twice before raising your paddle.</p><div class="entry-badges"><span>2–4 players</span><span>Room code</span><span>No chat required</span></div>${Tutorial.buttonMarkup()}</div><section class="online-paper"><h2>Take a seat</h2><p class="small">Create a table, or join your friends.</p><form class="online-form" id="online-entry-form"><label for="online-name">Your nickname<input id="online-name" name="nickname" autocomplete="nickname" maxlength="40" value="${escape(state.name)}" placeholder="e.g. SilverFox" required></label><button type="button" class="primary" id="online-create">Create a room</button><span class="entry-divider">or join a room</span><label for="online-room-code">Room code</label><div class="online-join-row"><input id="online-room-code" name="room" maxlength="8" value="${escape(state.roomCode)}" placeholder="Enter room code" aria-label="Room code" autocomplete="off" autocapitalize="characters" spellcheck="false"><button type="submit">Join room</button></div><small>Your name stays visible at this table. No account needed.</small></form></section></section>`;
+    return `<section class="online-entry"><div><span class="eyebrow">SHARE A TABLE</span><h1><span>Your friends.</span><br><span>Their secret bids.</span></h1><p>Invite your crew to the Old Harbor. One shared crate, different talents, and a reason to think twice before raising your paddle.</p><p class="online-computer-entry">Play with friends, or add computer players after creating a room.</p><div class="entry-badges"><span>2–4 players</span><span>Room code</span><span>No chat required</span></div>${Tutorial.buttonMarkup()}</div><section class="online-paper"><h2>Take a seat</h2><p class="small">Create a table, or join your friends.</p><form class="online-form" id="online-entry-form"><label for="online-name">Your nickname<input id="online-name" name="nickname" autocomplete="nickname" maxlength="40" value="${escape(state.name)}" placeholder="e.g. SilverFox" required></label><button type="button" class="primary" id="online-create">Create a room</button><span class="entry-divider">or join a room</span><label for="online-room-code">Room code</label><div class="online-join-row"><input id="online-room-code" name="room" maxlength="8" value="${escape(state.roomCode)}" placeholder="Enter room code" aria-label="Room code" autocomplete="off" autocapitalize="characters" spellcheck="false"><button type="submit">Join room</button></div><small>Your name stays visible at this table. No account needed.</small></form></section></section>`;
   }
   function toolbar(inGame = false) {
     const view = state.view;
@@ -171,9 +180,9 @@
   function recoveryPanel() {
     const view = state.view;
     const uncertain = state.connection !== 'Connected';
-    const offline = uncertain ? [] : view?.players.filter(player => player.active !== false && player.connected === false) || [];
+    const offline = uncertain ? [] : view?.players.filter(player => player.active !== false && !player.isBot && player.connected === false) || [];
     if (!uncertain && !offline.length) return '';
-    return `<section class="room-recovery ${offline.length ? 'has-offline' : ''} ${uncertain ? 'is-uncertain' : ''}" aria-label="Room recovery">${offline.length || uncertain ? '<strong class="room-recovery-heading">Room recovery</strong>' : ''}${uncertain ? `<p>Your connection is interrupted. Other players’ status may be out of date.</p>${!view ? '<p class="room-recovery-time"><span>Without room updates for</span> <time data-room-update-clock data-no-localize>0:00</time></p>' : ''}` : offline.length ? `<p>The room reports these players as offline.</p><ul class="room-recovery-list">${offline.map(player => `<li><strong>${userName(player)}</strong><span class="room-recovery-time">${Number.isFinite(player.offlineSince) ? `<span>Offline for</span> <time data-offline-since="${player.offlineSince}" data-no-localize>0:00</time>` : '<span>Offline time unavailable</span>'}</span><span class="room-recovery-reason">${Recovery.reason(view,player)}</span></li>`).join('')}</ul>` : ''}<details class="room-recovery-guide" id="room-recovery-guide"><summary>How to return to this room</summary><ol><li>Return in the original browser tab, then refresh it or retry the connection.</li><li>A room code alone cannot restore your previous seat in a new tab.</li><li>Rooms expire after six hours with no player activity.</li><li>Offline status begins after 15 seconds without a room update.</li><li>Bids, sales and host actions never happen automatically while someone is offline.</li></ol></details></section>`;
+    return `<section class="room-recovery ${offline.length ? 'has-offline' : ''} ${uncertain ? 'is-uncertain' : ''}" aria-label="Room recovery">${offline.length || uncertain ? '<strong class="room-recovery-heading">Room recovery</strong>' : ''}${uncertain ? `<p>Your connection is interrupted. Other players’ status may be out of date.</p>${!view ? '<p class="room-recovery-time"><span>Without room updates for</span> <time data-room-update-clock data-no-localize>0:00</time></p>' : ''}` : offline.length ? `<p>The room reports these players as offline.</p><ul class="room-recovery-list">${offline.map(player => `<li><strong>${userName(player)}</strong><span class="room-recovery-time">${Number.isFinite(player.offlineSince) ? `<span>Offline for</span> <time data-offline-since="${player.offlineSince}" data-no-localize>0:00</time>` : '<span>Offline time unavailable</span>'}</span><span class="room-recovery-reason">${Recovery.reason(view,player)}</span></li>`).join('')}</ul>` : ''}<details class="room-recovery-guide" id="room-recovery-guide"><summary>How to return to this room</summary><ol><li>Return in the original browser tab, then refresh it or retry the connection.</li><li>A room code alone cannot restore your previous seat in a new tab.</li><li>Rooms expire after six hours with no player activity.</li><li>Offline status begins after 15 seconds without a room update.</li><li>Human players’ bids, sales and host actions are never submitted automatically.</li></ol></details></section>`;
   }
   function updateRecoveryClocks() {
     const monotonicNow = performance.now();
@@ -187,14 +196,24 @@
   }
   function lobby() {
     const view = state.view, me = selfPlayer();
-    return `${toolbar()}<section class="online-lobby"><div class="online-lobby-layout"><div><h2>Choose your edge</h2><p class="lobby-intro">Your role stays locked for the session. Other players may choose the same role.</p>${(view.rulesVersion ?? 2) >= 3 ? '<p class="role-roster-label">Six roles. One shared auction.</p>' : ''}<div class="role-grid expanded-roles">${Object.entries(E.ROLES).filter(([id]) => (view.rulesVersion ?? 2) >= 3 || ['restorer','collector','appraiser'].includes(id)).map(([id, role]) => `<button type="button" class="role-card" data-online-role="${id}" aria-pressed="${me.role === id}" aria-label="Choose ${role.short}"><span class="role-heading"><span class="role-portrait">${sprite(Art.portraitFor(id))}</span><h3>${role.short}</h3></span><p class="gold">${role.tagline}</p><span class="skill"><strong>${role.skill}</strong><span>${role.passive}</span></span><p class="risk">${role.risk}</p></button>`).join('')}</div>${me.role === 'collector' ? `<fieldset class="theme-picker"><legend>Choose a collection theme</legend><p class="small muted">The theme stays locked for the session.</p><div class="theme-options">${Object.entries(E.THEMES).map(([id,name]) => `<button type="button" data-online-theme="${id}" aria-pressed="${me.theme === id}">${name}</button>`).join('')}</div></fieldset>` : ''}</div><aside class="online-lobby-side"><section class="online-paper"><h3>At this table</h3>${view.players.filter(player => player.active).map(player => `<div class="online-lobby-player"><span class="role-portrait">${sprite(Art.portraitFor(player.role))}</span><div class="player-copy"><strong>${userName(player)}${player.id === view.selfId ? ' <span class="small">· <span>You</span></span>' : ''}</strong><small><span>${E.ROLES[player.role].short}</span>${player.id === view.hostId ? ' · <span>Host</span>' : ''}</small><small>${player.ready ? 'Ready' : 'Not ready'}</small></div><span class="player-presence ${player.connected ? '' : 'is-offline'}" aria-label="${player.connected ? 'Online' : 'Offline'}"></span></div>`).join('')}${view.players.filter(player => player.active).length < 2 ? '<p class="online-lobby-empty">Waiting for another player…</p>' : ''}<button type="button" id="online-ready" class="${me.ready ? 'secondary' : 'primary'}">${me.ready ? 'Change my choice' : 'Ready to play'}</button>${view.hostId === view.selfId ? `<button type="button" class="primary" id="online-start" ${view.can.start ? '' : 'disabled'}>Start auction</button><p class="host-note">You need at least two players, and everyone must be ready.</p>` : '<p class="host-note">The host starts when everyone is ready.</p>'}</section></aside></div></section>`;
+    return `${toolbar()}<section class="online-lobby"><div class="online-lobby-layout"><div><h2>Choose your edge</h2><p class="lobby-intro">Your role stays locked for the session. Other players may choose the same role.</p>${(view.rulesVersion ?? 2) >= 3 ? '<p class="role-roster-label">Six roles. One shared auction.</p>' : ''}<div class="role-grid expanded-roles">${Object.entries(E.ROLES).filter(([id]) => (view.rulesVersion ?? 2) >= 3 || ['restorer','collector','appraiser'].includes(id)).map(([id, role]) => `<button type="button" class="role-card" data-online-role="${id}" aria-pressed="${me.role === id}" aria-label="Choose ${role.short}"><span class="role-heading"><span class="role-portrait">${sprite(Art.portraitFor(id))}</span><h3>${role.short}</h3></span><p class="gold">${role.tagline}</p><span class="skill"><strong>${role.skill}</strong><span>${role.passive}</span></span><p class="risk">${role.risk}</p></button>`).join('')}</div>${me.role === 'collector' ? `<fieldset class="theme-picker"><legend>Choose a collection theme</legend><p class="small muted">The theme stays locked for the session.</p><div class="theme-options">${Object.entries(E.THEMES).map(([id,name]) => `<button type="button" data-online-theme="${id}" aria-pressed="${me.theme === id}">${name}</button>`).join('')}</div></fieldset>` : ''}</div><aside class="online-lobby-side"><section class="online-paper"><h3>At this table</h3>${view.players.filter(player => player.active).map(lobbyPlayer).join('')}${view.players.filter(player => player.active).length < 2 ? '<p class="online-lobby-empty">Invite a friend or add a computer player.</p>' : ''}${lobbyBotControls()}<button type="button" id="online-ready" class="${me.ready ? 'secondary' : 'primary'}">${me.ready ? 'Change my choice' : 'Ready to play'}</button>${view.hostId === view.selfId ? `<button type="button" class="primary" id="online-start" ${view.can.start ? '' : 'disabled'}>Start auction</button><p class="host-note">At least two seats are needed. Human players must be ready; computers are always ready.</p>` : '<p class="host-note">The host starts when all human players are ready.</p>'}</section></aside></div></section>`;
+  }
+  function lobbyPlayer(player) {
+    const view = state.view, connected = player.isBot || player.connected;
+    return `<div class="online-lobby-player ${player.isBot ? 'is-computer' : ''}"><span class="role-portrait">${sprite(Art.portraitFor(player.role))}</span><div class="player-copy"><strong>${userName(player)}${player.id === view.selfId ? ' <span class="small">· <span>You</span></span>' : ''}</strong><small><span>${E.ROLES[player.role].short}</span>${player.id === view.hostId ? ' · <span>Host</span>' : ''}</small>${computerBadge(player)}<small>${player.isBot ? 'Always ready' : player.ready ? 'Ready' : 'Not ready'}</small></div>${player.isBot && view.can.removeBot ? `<button type="button" class="online-remove-computer" data-online-remove-bot="${escape(player.id)}" aria-label="Remove computer player">Remove</button>` : `<span class="player-presence ${connected ? '' : 'is-offline'}" aria-label="${connected ? 'Online' : 'Offline'}"></span>`}</div>`;
+  }
+  function lobbyBotControls() {
+    const view = state.view;
+    if (view.selfId !== view.hostId || typeof view.can.addBot !== 'boolean') return '';
+    return `<section class="online-computer-controls" aria-label="Computer players"><h4>Computer players</h4><label for="online-bot-style">Bidding style</label><div class="online-computer-add"><select id="online-bot-style">${Object.entries(botStyles).map(([id,label]) => `<option value="${id}" ${state.botStyle === id ? 'selected' : ''}>${label}</option>`).join('')}</select><button type="button" id="online-add-bot" ${view.can.addBot ? '' : 'disabled'}>Add computer</button></div><p id="online-bot-style-hint">${botStyleHints[state.botStyle]}</p>${view.can.addBot ? '' : `<p>${view.can.removeBot ? 'All four seats are occupied. Remove a computer to make room for a friend.' : 'All four seats are occupied.'}</p>`}<p>Computers use their own clues, submit bids automatically, and settle their wins.</p></section>`;
   }
   function seats() {
     const view = state.view, revealed = view.phase !== 'auction', last = view.history.at(-1), players = view.players.filter(player => player.active);
     return `<section class="bidder-seats" aria-label="At the table" style="--seat-count:${players.length}">${players.map((player,index) => {
       const bid = revealed ? last?.bids.find(entry => entry.id === player.id) : null;
-      const status = !player.connected ? 'Disconnected' : view.phase === 'result' ? (player.ready ? 'Ready for next crate' : 'Not ready') : view.phase === 'ended' ? 'Session finished' : view.phase === 'dispose' ? (player.id === view.winnerId ? 'Settling the crate' : 'Waiting for settlement') : revealed && bid ? (bid.bid > 0 ? money(bid.bid) : 'Passed') : player.submitted ? 'Submitted' : 'Deciding';
-      return `<div class="bidder-seat ${player.id === view.selfId ? 'is-self' : ''} ${view.winnerId === player.id ? 'is-winner' : ''} ${player.connected ? '' : 'is-offline'}"><span class="seat-portrait">${sprite(Art.portraitFor(player.role,player.id === view.selfId))}</span><div class="seat-info"><div class="seat-name"><strong>${userName(player)}${player.id === view.selfId ? ' <span class="small">· <span>You</span></span>' : ''}</strong><small><span>${E.ROLES[player.role].short}</span> · ${money(player.cash)}</small></div><span class="seat-status ${player.submitted && !revealed ? 'is-submitted' : ''}">${status}</span></div><span class="bid-paddle" aria-hidden="true">${index+1}</span></div>`;
+      const connected = player.isBot || player.connected;
+      const status = !connected ? 'Disconnected' : view.phase === 'result' ? (player.isBot || player.ready ? 'Ready for next crate' : 'Not ready') : view.phase === 'ended' ? 'Session finished' : view.phase === 'dispose' ? (player.id === view.winnerId ? 'Settling the crate' : 'Waiting for settlement') : revealed && bid ? (bid.bid > 0 ? money(bid.bid) : 'Passed') : player.submitted ? 'Submitted' : 'Deciding';
+      return `<div class="bidder-seat ${player.id === view.selfId ? 'is-self' : ''} ${view.winnerId === player.id ? 'is-winner' : ''} ${connected ? '' : 'is-offline'}"><span class="seat-portrait">${sprite(Art.portraitFor(player.role,player.id === view.selfId))}</span><div class="seat-info"><div class="seat-name"><strong>${userName(player)}${player.id === view.selfId ? ' <span class="small">· <span>You</span></span>' : ''}</strong><small><span>${E.ROLES[player.role].short}</span> · ${money(player.cash)}</small>${computerBadge(player)}</div><span class="seat-status ${player.submitted && !revealed ? 'is-submitted' : ''}">${status}</span></div><span class="bid-paddle" aria-hidden="true">${index+1}</span></div>`;
     }).join('')}</section>`;
   }
   function status() {
@@ -207,11 +226,31 @@
     if (view.round === 1) return '<span>Six covered objects. Only their silhouettes are confirmed.</span>';
     return `<span>Genuine objects: ${view.public.genuineCount} / 6.</span>${view.public.repairableCount !== null ? `<br><span>Repairable objects: ${view.public.repairableCount}.</span>` : ''}`;
   }
+  function roundCluesMarkup() {
+    const view=state.view;
+    if(!view||view.phase!=='auction')return '';
+    const round=view.round,countsPublic=round===2||round===3;
+    const slot=round===3?view.public?.publicIndex:null;
+    const lot=Number.isInteger(slot)?view.lots.find(item=>item.slot===slot&&item.known&&item.source==='Public reveal'):null;
+    const publicLot=lot?{slot:lot.slot,label:lot.name,base:lot.base,known:true,source:lot.source}:null;
+    return Clues.markup({round,genuineCount:countsPublic?view.public?.genuineCount:null,repairableCount:round===3?view.public?.repairableCount:null,publicLot});
+  }
+  function selectRoundClue(slot) {
+    const view=state.view;
+    if(!view||view.phase!=='auction'||view.round!==3||!Number.isInteger(slot)||slot!==view.public?.publicIndex)return;
+    if(!view.lots.some(lot=>lot.slot===slot&&lot.known&&lot.source==='Public reveal'))return;
+    state.selected=slot;persist();render();
+    main.querySelector(`.object-button[data-online-lot="${slot}"]`)?.focus({preventScroll:true});
+    main.querySelector('#online-selected-object')?.scrollIntoView({block:'nearest',behavior:window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches?'auto':'smooth'});
+  }
   function attributes(lot) {
     return `<span>${lot.genuine ? 'Genuine' : 'Reproduction'}</span> · <span>${({intact:'Intact',damaged:'Damaged',unrepairable:'Unrepairable'})[lot.condition]}</span> · <span>${lot.category}</span> · <span>${E.THEMES[lot.theme] || 'No collection theme'}</span>${lot.repair ? `<br><span>Workshop fee</span> ${money(lot.repair.cost)} · <span>Restored sale price</span> ${money(lot.repair.sale)}` : ''}`;
   }
   function cards() {
-    return state.view.lots.map(lot => `<button type="button" class="object-button ${lot.known ? 'object-known' : ''}" data-online-lot="${lot.slot}" aria-label="Select object ${lot.slot+1}" aria-controls="online-selected-object" aria-pressed="${state.selected === lot.slot}"><span class="object-head"><span class="object-letter">${letter(lot.slot)}</span><span class="object-status ${lot.source === 'Public reveal' ? 'public-status' : ''}">${lot.source}</span></span><span class="object-art" aria-hidden="true">${art(lot)}${lot.known ? `<span class="authenticity-stamp ${lot.genuine ? 'is-genuine' : 'is-reproduction'}">${lot.genuine ? 'Genuine' : 'Reproduction'}</span>` : ''}</span><span class="object-label">${lot.known ? lot.name : E.SHAPES[lot.shape]}</span><span class="object-range"><span>${lot.known ? 'Base price' : 'Catalog range'}</span><span>${lot.known ? lot.base : lot.range.min+'–'+lot.range.max}</span></span></button>`).join('');
+    return state.view.lots.map(lot => {
+      const newPublic=state.view.round===3&&lot.slot===state.view.public?.publicIndex&&lot.known&&lot.source==='Public reveal';
+      return `<button type="button" class="object-button ${lot.known ? 'object-known' : ''} ${newPublic?'is-round-reveal':''}" data-online-lot="${lot.slot}" aria-label="Select object ${lot.slot+1}" aria-controls="online-selected-object" aria-pressed="${state.selected === lot.slot}"><span class="object-head"><span class="object-letter">${letter(lot.slot)}</span><span class="object-status ${lot.source === 'Public reveal' ? 'public-status' : ''} ${newPublic?'round-reveal-mark':''}">${newPublic?'New this round':lot.source}</span></span><span class="object-art" aria-hidden="true">${art(lot)}${lot.known ? `<span class="authenticity-stamp ${lot.genuine ? 'is-genuine' : 'is-reproduction'}">${lot.genuine ? 'Genuine' : 'Reproduction'}</span>` : ''}</span><span class="object-label">${lot.known ? lot.name : E.SHAPES[lot.shape]}</span><span class="object-range"><span>${lot.known ? 'Base price' : 'Catalog range'}</span><span>${lot.known ? lot.base : lot.range.min+'–'+lot.range.max}</span></span></button>`;
+    }).join('');
   }
   function dossier() {
     const lot = state.view.lots.find(item => item.slot === state.selected);
@@ -233,11 +272,11 @@
   function auction() {
     const view = state.view;
     const next = view.round === 1 ? 'If no sale: next round reveals the genuine count.' : view.round === 2 ? 'If no sale: next round reveals one identity and the repairable count.' : 'Final round: the highest bid wins. Ties follow the published priority.';
-    return `<div class="workbench-head"><div><h2 class="lot-title">Shared auction table</h2><span class="round-preview">${next}</span></div><div class="workbench-tools">${reserveNotice()}${Notes.buttonMarkup()}<span class="tag">${view.players.filter(player => player.submitted).length} / ${view.players.filter(player => player.active).length} submitted</span></div></div><div class="workbench-grid"><section class="auction-table-column"><div class="crate"><div class="crate-top"><span>One crate / six objects</span><span>Choose an object to see its details.</span></div><div class="objects">${cards()}</div><a class="mobile-detail-link" href="#online-selected-object">Selected object details ↓</a></div></section><aside class="workbench-sidebar">${dossier()}</aside></div>${dock()}${references()}`;
+    return `<div class="workbench-head"><div><h2 class="lot-title">Shared auction table</h2><span class="round-preview">${next}</span></div><div class="workbench-tools">${reserveNotice()}${Notes.buttonMarkup()}<span class="tag">${view.players.filter(player => player.submitted).length} / ${view.players.filter(player => player.active).length} submitted</span></div></div>${roundCluesMarkup()}<div class="workbench-grid"><section class="auction-table-column"><div class="crate"><div class="crate-top"><span>One crate / six objects</span><span>Choose an object to see its details.</span></div><div class="objects">${cards()}</div><a class="mobile-detail-link" href="#online-selected-object">Selected object details ↓</a></div></section><aside class="workbench-sidebar">${dossier()}</aside></div>${dock()}${references()}`;
   }
   function historyTable() {
     const view = state.view, players = view.players;
-    return `<table class="online-bid-history"><thead><tr><th>Round</th>${players.map(player => `<th>${userName(player)}</th>`).join('')}</tr></thead><tbody>${view.history.map(round => `<tr><td>${round.round} / 3</td>${players.map(player => { const bid = round.bids.find(entry => entry.id === player.id); return `<td>${bid?.bid ? money(bid.bid) : '—'}</td>`; }).join('')}</tr>`).join('')}</tbody></table>`;
+    return `<table class="online-bid-history"><thead><tr><th>Round</th>${players.map(player => `<th>${userName(player)}${computerBadge(player,false)}</th>`).join('')}</tr></thead><tbody>${view.history.map(round => `<tr><td>${round.round} / 3</td>${players.map(player => { const bid = round.bids.find(entry => entry.id === player.id); return `<td>${bid?.bid ? money(bid.bid) : '—'}</td>`; }).join('')}</tr>`).join('')}</tbody></table>`;
   }
   function roundSummary() {
     const view = state.view, last = view.history.at(-1);
@@ -246,13 +285,14 @@
   function truth() {
     return `<div class="online-truth-grid">${state.view.lots.map(lot => `<article class="online-truth-card"><div class="truth-art" aria-hidden="true">${art(lot)}</div><span class="eyebrow">Object ${letter(lot.slot)}</span><h3>${lot.name}</h3><p>${attributes(lot)}</p><strong><span>Base price</span> ${money(lot.base)}</strong></article>`).join('')}</div>`;
   }
-  function plan() {
+  function plan(mode = state.saleMode) {
     const view = state.view;
+    if (mode === 'ordinary') return E.salePlan(view.self.role, view.lots, 'ordinary', view.self.cash);
     const options = {theme:view.self.theme};
     if (view.self.role === 'restorer') options.repairIds = state.repairSlots.map(slot => view.lots.find(lot => lot.slot === slot).id);
     if (view.self.role === 'collector') options.pairIds = state.pairSlots.map(slot => view.lots.find(lot => lot.slot === slot).id);
     if (['salvager','curator','broker'].includes(view.self.role)) options.abilityIds = state.abilitySlots.map(slot => view.lots.find(lot => lot.slot === slot).id);
-    return E.salePlan(view.self.role, view.lots, state.saleMode, view.self.cash, options);
+    return E.salePlan(view.self.role, view.lots, mode, view.self.cash, options);
   }
   function receiptMarkup(receipt, preview = false) {
     const paid = receipt.paid ?? state.view.winningBid ?? 0;
@@ -276,16 +316,20 @@
   }
   function disposal() {
     const view = state.view, isWinner = view.winnerId === view.selfId;
-    let planValue = null, selectionError = '';
-    if (isWinner) { try { planValue = plan(); } catch (error) { selectionError = error.message; } }
-    const ordinary = isWinner ? E.salePlan(view.self.role,view.lots,'ordinary',view.self.cash) : null;
-    const delta = planValue ? planValue.recovery-ordinary.recovery : 0;
-    const comparison = planValue ? `<div class="ability-net"><span>Net gain vs ordinary sale</span><strong class="${delta < 0 ? 'negative' : 'positive'}">${signed(delta)}</strong></div>` : '';
-    return `<div class="online-reveal"><section class="reveal-main"><span class="eyebrow">${isWinner ? 'Won the crate' : 'Waiting for settlement'}</span><h2>${userName(playerById(view.winnerId))} <span>Won the crate</span></h2><p class="reveal-description">Everyone can now see the crate’s identities.</p>${truth()}${isWinner ? `<div class="online-sale-controls"><button type="button" data-online-sale="ordinary" aria-pressed="${state.saleMode === 'ordinary'}">Sell at ordinary prices</button>${view.self.role !== 'appraiser' ? `<button type="button" data-online-sale="special" aria-pressed="${state.saleMode === 'special'}">Use my role ability</button>` : '<p class="small muted">Your role uses ordinary sale prices.</p>'}</div>${state.saleMode === 'special' && view.self.role !== 'appraiser' ? processingSelection() : ''}` : '<p class="online-wait-copy" style="margin-top:22px">The winner is choosing how to sell.</p>'}</section><aside class="online-paper">${isWinner ? planValue ? receiptMarkup(planValue,true)+comparison : `<h3>Your sale plan</h3><p class="error">${escape(L.translate(selectionError))}</p>` : `<h3>Waiting for the winner</h3><p class="small">The winner is choosing how to sell.</p><p class="small" style="margin-top:14px"><span>Winning bid</span> <strong>${money(view.winningBid)}</strong></p>`}${isWinner ? `<button type="button" class="primary" id="online-sell" ${!view.can.sell || !planValue ? 'disabled' : ''}>Settle this crate</button>` : ''}</aside></div>${references()}`;
+    let ordinary = null, special = null, specialError = '';
+    if (isWinner) {
+      ordinary = plan('ordinary');
+      if (view.self.role !== 'appraiser') { try { special = plan('special'); } catch (error) { specialError = error.message; } }
+    }
+    const planValue = isWinner ? state.saleMode === 'special' && view.self.role !== 'appraiser' ? special : ordinary : null;
+    const selectionError = isWinner && !planValue ? specialError : '';
+    const comparison = isWinner ? SaleCompare.markup({ordinary,special,paid:view.winningBid,selectedMode:state.saleMode,hasAbility:view.self.role !== 'appraiser',error:specialError}) : '';
+    const summary = isWinner ? `<h3>Your settlement</h3><div class="sale-selected-summary"><span>Selected plan</span><h3>${state.saleMode === 'special' && view.self.role !== 'appraiser' ? 'Ability processing' : 'Ordinary sale'}</h3>${planValue ? `<div class="receipt-profit"><span>Final profit / loss</span><strong class="${planValue.recovery-view.winningBid < 0 ? 'negative' : 'positive'}">${signed(planValue.recovery-view.winningBid)}</strong></div><div class="receipt-line"><span>Cash after sale</span><strong>${money(view.self.cash+planValue.recovery)}</strong></div><details class="latest-receipt"><summary>Sale preview</summary>${receiptMarkup(planValue,true)}</details>` : '<p class="selection-warning">Choose the ability targets to compare.</p>'}</div>${selectionError ? `<p class="error">${escape(L.translate(selectionError))}</p>` : ''}` : `<h3>Waiting for the winner</h3><p class="small">The winner is choosing how to sell.</p><p class="small" style="margin-top:14px"><span>Winning bid</span> <strong>${money(view.winningBid)}</strong></p>`;
+    return `<div class="online-reveal sale-disposal"><section class="reveal-main"><span class="eyebrow">${isWinner ? 'Won the crate' : 'Waiting for settlement'}</span><h2>${userName(playerById(view.winnerId))} <span>Won the crate</span></h2><p class="reveal-description">Everyone can now see the crate’s identities.</p>${truth()}${comparison}${isWinner ? `<div class="online-sale-controls"><button type="button" data-online-sale="ordinary" aria-pressed="${state.saleMode === 'ordinary'}">Sell at ordinary prices</button>${view.self.role !== 'appraiser' ? `<button type="button" data-online-sale="special" aria-pressed="${state.saleMode === 'special'}">Use my role ability</button>` : ''}</div>${state.saleMode === 'special' && view.self.role !== 'appraiser' ? processingSelection() : ''}` : '<p class="online-wait-copy" style="margin-top:22px">The winner is choosing how to sell.</p>'}</section><aside class="online-paper">${summary}${isWinner ? `<button type="button" class="primary" id="online-sell" ${!view.can.sell || !planValue ? 'disabled' : ''}>Settle this crate</button>` : ''}</aside></div>${references()}`;
   }
   function scoreboard() {
     const view = state.view, ranking = [...view.players].sort((a,b) => b.cash-a.cash);
-    return `<div class="online-scoreboard">${ranking.map((player,index) => `<div class="online-score ${player.id === view.selfId ? 'is-self' : ''}"><span class="score-place">${index > 0 && player.cash === ranking[index-1].cash ? ranking.findIndex(p => p.cash === player.cash)+1 : index+1}</span><div class="score-name"><strong>${userName(player)}${player.id === view.selfId ? ' <span class="small">· <span>You</span></span>' : ''}</strong><small><span>${E.ROLES[player.role].short}</span>${view.phase !== 'ended' ? ` · <span>${player.ready ? 'Ready for next crate' : 'Not ready'}</span>` : ''}</small></div><strong class="score-money">${money(player.cash)}<small class="${player.profit < 0 ? 'negative' : 'positive'}">${signed(player.profit)}</small></strong></div>`).join('')}</div>`;
+    return `<div class="online-scoreboard">${ranking.map((player,index) => `<div class="online-score ${player.id === view.selfId ? 'is-self' : ''}"><span class="score-place">${index > 0 && player.cash === ranking[index-1].cash ? ranking.findIndex(p => p.cash === player.cash)+1 : index+1}</span><div class="score-name"><strong>${userName(player)}${player.id === view.selfId ? ' <span class="small">· <span>You</span></span>' : ''}</strong><small><span>${E.ROLES[player.role].short}</span>${view.phase !== 'ended' ? ` · <span>${player.isBot || player.ready ? 'Ready for next crate' : 'Not ready'}</span>` : ''}</small>${computerBadge(player)}</div><strong class="score-money">${money(player.cash)}<small class="${player.profit < 0 ? 'negative' : 'positive'}">${signed(player.profit)}</small></strong></div>`).join('')}</div>`;
   }
   function waitingFor(players) {
     if (!players.length) return '<p class="online-ready-message">Everyone is ready.</p>';
@@ -306,7 +350,7 @@
   }
   function result() {
     const view = state.view, me = selfPlayer(), ended = view.phase === 'ended';
-    return `<div class="online-reveal"><section class="reveal-main"><span class="eyebrow">${ended ? 'Session finished' : 'Crate settled'}</span><h2>${ended ? 'Final standings' : 'Crate settled'}</h2><p class="reveal-description">${ended ? 'Ranked by current cash.' : 'You can leave after this settled crate.'}</p>${!ended && !view.winnerId && view.reservePrice ? '<p class="small muted">No bid met the reserve. Nobody pays.</p>' : ''}${scoreboard()}${sessionLedger()}${view.history.length ? `<details class="online-reference"><summary>Public bid history</summary>${historyTable()}</details>` : ''}</section><aside class="online-paper">${view.receipt && view.winnerId === view.selfId ? receiptMarkup(view.receipt) : `<h3>${ended ? 'Session finished' : 'Your next move'}</h3><p class="small"><span>Your cash</span> <strong>${money(view.self.cash)}</strong></p><p class="small"><span>Cash change</span> <strong>${signed(me.profit)}</strong></p>`}${ended ? '<button type="button" class="primary" id="online-return">Return to rooms</button>' : `<button type="button" id="online-ready" class="${me.ready ? 'secondary' : 'primary'}" ${view.can.ready ? '' : 'disabled'}>${me.ready ? 'Change my choice' : 'Ready for another crate'}</button>${view.hostId === view.selfId ? `<button type="button" class="primary" id="online-continue" ${view.can.continue ? '' : 'disabled'}>Continue auction</button><button type="button" class="text-button" id="online-finish" ${view.can.finish ? '' : 'disabled'}>Finish session</button>` : ''}${waitingFor(view.players.filter(player => player.active && !player.ready))}<p class="small" style="margin-top:14px">Everyone must be ready before the host opens another crate.</p>`}</aside></div>`;
+    return `<div class="online-reveal"><section class="reveal-main"><span class="eyebrow">${ended ? 'Session finished' : 'Crate settled'}</span><h2>${ended ? 'Final standings' : 'Crate settled'}</h2><p class="reveal-description">${ended ? 'Ranked by current cash.' : 'You can leave after this settled crate.'}</p>${!ended && !view.winnerId && view.reservePrice ? '<p class="small muted">No bid met the reserve. Nobody pays.</p>' : ''}${scoreboard()}${sessionLedger()}${view.history.length ? `<details class="online-reference"><summary>Public bid history</summary>${historyTable()}</details>` : ''}</section><aside class="online-paper">${view.receipt && view.winnerId === view.selfId ? receiptMarkup(view.receipt) : `<h3>${ended ? 'Session finished' : 'Your next move'}</h3><p class="small"><span>Your cash</span> <strong>${money(view.self.cash)}</strong></p><p class="small"><span>Cash change</span> <strong>${signed(me.profit)}</strong></p>`}${ended ? '<button type="button" class="primary" id="online-return">Return to rooms</button>' : `<button type="button" id="online-ready" class="${me.ready ? 'secondary' : 'primary'}" ${view.can.ready ? '' : 'disabled'}>${me.ready ? 'Change my choice' : 'Ready for another crate'}</button>${view.hostId === view.selfId ? `<button type="button" class="primary" id="online-continue" ${view.can.continue ? '' : 'disabled'}>Continue auction</button><button type="button" class="text-button" id="online-finish" ${view.can.finish ? '' : 'disabled'}>Finish session</button>` : ''}${waitingFor(view.players.filter(player => player.active && !player.isBot && !player.ready))}<p class="small" style="margin-top:14px">All human players must be ready before the host opens another crate.</p>`}</aside></div>`;
   }
   function render() {
     const details = [...main.querySelectorAll('details')].map((element,index) => ({id:element.id,className:element.className,index,open:element.open}));
@@ -345,8 +389,8 @@
     }
     const decision=view?{round:view.round,editable:view.phase==='auction'&&!reconnecting&&!state.busy,settlement}:null;
     Notes.bind(main,{key:view&&view.auctionNumber>0?`room:${view.code}:${view.selfId}:${view.auctionNumber}`:null,storage:noteStorage,scope:'tab',decision,lots:view?.lots.map(lot=>({slot:lot.slot,label:lot.known?lot.name:E.SHAPES[lot.shape],known:lot.known,source:lot.source,range:lot.range,...(lot.known?{base:lot.base,genuine:lot.genuine,condition:lot.condition}:{})}))||[]});
-    if (state.busy) main.querySelectorAll('button,input').forEach(element => element.disabled = true);
-    if (reconnecting) main.querySelectorAll('#online-ready,#online-start,#online-next,#online-continue,#online-finish,#online-leave,#online-inspect,#online-withdraw,#online-sell,#online-pass,#online-bid-form button[type="submit"],[data-online-role],[data-online-theme]').forEach(element => element.disabled = true);
+    if (state.busy) main.querySelectorAll('button,input,select').forEach(element => element.disabled = true);
+    if (reconnecting) main.querySelectorAll('#online-ready,#online-start,#online-next,#online-continue,#online-finish,#online-leave,#online-inspect,#online-withdraw,#online-sell,#online-pass,#online-add-bot,#online-bot-style,#online-bid-form button[type="submit"],[data-online-role],[data-online-theme],[data-online-remove-bot]').forEach(element => element.disabled = true);
     if (focusId) {
       const replacement = document.getElementById(focusId);
       if (replacement && !replacement.disabled) { replacement.focus({preventScroll:true}); if (selection && selection.start !== null) { try { replacement.setSelectionRange(selection.start,selection.end); } catch {} } }
@@ -369,15 +413,25 @@
     if (range) range.value = String(Math.max(minimumBid(),Math.min(cash,amount || minimumBid())));
     if (balance) balance.textContent = Number.isSafeInteger(amount) && amount >= minimumBid() && amount <= cash ? money(cash-amount) : '—';
   }
+  function reviewCrosscheck(action) {
+    const view=state.view,source=E.SOURCES[view.sourceId];
+    let storage;
+    try { storage=window.sessionStorage; } catch { /* Match the in-memory notebook when storage is blocked. */ }
+    const lots=view.lots.map(lot=>({slot:lot.slot,label:lot.known?lot.name:E.SHAPES[lot.shape],known:lot.known,source:lot.source,range:lot.range,...(lot.known?{base:lot.base,genuine:lot.genuine,condition:lot.condition}:{})}));
+    return Notes.reviewMarkup({key:`room:${view.code}:${view.selfId}:${view.auctionNumber}`,storage,round:view.round,amount:action.amount,pass:action.pass===true,lots,clues:{
+      genuineCount:view.public.genuineCount,repairableCount:view.public.repairableCount,sourceName:source?.name,sourceHint:source?.hint
+    }});
+  }
   function reviewAction(action) {
     if (state.connection !== 'Connected') { poll(); return; }
     pendingReview = {...action,turnId:state.view?.turnId};
     const passing = action.type === 'bid' && action.pass;
     const submit = action.type === 'bid', leaving = action.type === 'leave';
     const title = submit ? passing ? 'Review your pass' : 'Review your sealed bid' : leaving ? 'Leave this room?' : 'Finish session';
-    const description = submit ? 'You can withdraw until the last player submits. If you are last, confirming reveals all bids immediately.' : leaving ? 'Your current room seat will be released.' : 'The host will finish this session for everyone. Current results stay final.';
+    const singleHuman = state.view.players.filter(player => player.active && !player.isBot).length === 1;
+    const description = submit ? singleHuman ? 'With one human player, confirming a bid or pass reveals the round immediately.' : 'You can withdraw until the last player submits. If you are last, confirming reveals all bids immediately.' : leaving ? 'Your current room seat will be released.' : 'The host will finish this session for everyone. Current results stay final.';
     const body = document.getElementById('online-review-body');
-    body.innerHTML = `<span class="eyebrow">${submit ? 'NOT SUBMITTED YET' : 'Your next move'}</span><h2 id="online-review-title">${title}</h2>${submit ? `<p class="online-review-scope">${passing ? 'No purchase if you pass.' : 'One bid for all six objects.'}</p><div class="review-amount"><span>Your choice</span><strong>${passing ? 'PASS' : money(action.amount)}</strong></div><div class="online-review-balance"><span>${passing ? 'Your cash' : 'Cash if you win'}</span><strong>${money(state.view.self.cash-(passing ? 0 : action.amount))}</strong></div>${passing ? '' : '<p class="small muted">Before sale proceeds and ability costs.</p>'}` : ''}<p class="online-review-description">${description}</p><div class="review-actions"><button type="button" id="online-review-cancel">${submit ? 'Withdraw & edit' : 'Cancel'}</button><button type="button" class="primary" id="online-review-confirm">${submit ? passing ? 'Confirm pass' : 'Confirm bid' : leaving ? 'Confirm leave' : 'Confirm finish'}</button></div>`;
+    body.innerHTML = `<span class="eyebrow">${submit ? 'NOT SUBMITTED YET' : 'Your next move'}</span><h2 id="online-review-title">${title}</h2>${submit ? `<p class="online-review-scope">${passing ? 'No purchase if you pass.' : 'One bid for all six objects.'}</p><div class="review-amount"><span>Your choice</span><strong>${passing ? 'PASS' : money(action.amount)}</strong></div>${reviewCrosscheck(action)}<div class="online-review-balance"><span>${passing ? 'Your cash' : 'Cash if you win'}</span><strong>${money(state.view.self.cash-(passing ? 0 : action.amount))}</strong></div>${passing ? '' : '<p class="small muted">Before sale proceeds and ability costs.</p>'}` : ''}<p class="online-review-description">${description}</p><div class="review-actions"><button type="button" id="online-review-cancel">${submit ? 'Withdraw & edit' : 'Cancel'}</button><button type="button" class="primary" id="online-review-confirm">${submit ? passing ? 'Confirm pass' : 'Confirm bid' : leaving ? 'Confirm leave' : 'Confirm finish'}</button></div>`;
     L.localize(body);
     body.querySelector('#online-review-cancel').addEventListener('click', () => review.close());
     body.querySelector('#online-review-confirm').addEventListener('click', () => {
@@ -387,9 +441,10 @@
       if (pending.turnId !== state.view?.turnId) { state.error = 'This round has already revealed. Review the result below.'; render(); return; }
       const {type,turnId,...fields} = pending; command(type,fields);
     });
-    review.showModal(); body.querySelector('#online-review-cancel').focus();
+    review.showModal(); body.querySelector('#online-review-cancel').focus({preventScroll:true}); review.scrollTop = 0;
   }
   function bind() {
+    main.querySelectorAll('[data-round-clue-slot]').forEach(button=>button.addEventListener('click',()=>selectRoundClue(Number(button.dataset.roundClueSlot))));
     const on = (selector, event, fn) => main.querySelector(selector)?.addEventListener(event, fn);
     on('#online-name','input',event => { state.name = event.target.value; });
     on('#online-room-code','input',event => { state.roomCode = event.target.value; });
@@ -407,6 +462,14 @@
     main.querySelectorAll('[data-online-role]').forEach(button => button.addEventListener('click',() => command('configure',{role:button.dataset.onlineRole,theme:selfPlayer().theme || 'harbor'})));
     main.querySelectorAll('[data-online-theme]').forEach(button => button.addEventListener('click',() => command('configure',{role:state.view.self.role,theme:button.dataset.onlineTheme})));
     on('#online-ready','click',() => command('ready',{ready:!selfPlayer().ready}));
+    on('#online-bot-style','change',event => {
+      if (!Object.hasOwn(botStyles,event.target.value)) return;
+      state.botStyle = event.target.value;
+      const hint = main.querySelector('#online-bot-style-hint');
+      hint.textContent = botStyleHints[state.botStyle]; L.localize(hint);
+    });
+    on('#online-add-bot','click',() => command('add-bot',{style:state.botStyle}));
+    main.querySelectorAll('[data-online-remove-bot]').forEach(button => button.addEventListener('click',() => command('remove-bot',{playerId:button.dataset.onlineRemoveBot})));
     on('#online-start','click',() => command('start'));
     on('#online-next','click',() => command('next'));
     on('#online-continue','click',() => command('continue'));
@@ -427,7 +490,7 @@
     });
     on('#online-pass','click',() => reviewAction({type:'bid',amount:null,pass:true}));
     on('#online-withdraw','click',() => command('withdraw'));
-    main.querySelectorAll('[data-online-sale]').forEach(button => button.addEventListener('click',() => { state.saleMode = button.dataset.onlineSale; if (state.saleMode === 'ordinary') { state.repairSlots = []; state.pairSlots = []; state.abilitySlots = []; } persist(); render(); }));
+    main.querySelectorAll('[data-online-sale]').forEach(button => button.addEventListener('click',() => { state.saleMode = button.dataset.onlineSale; persist(); render(); }));
     main.querySelectorAll('[data-online-processing]').forEach(input => input.addEventListener('change',() => {
       const key = processingKey(), slot = Number(input.dataset.onlineProcessing);
       state[key] = input.checked ? [...state[key],slot] : state[key].filter(id => id !== slot); persist(); render(); main.querySelector(`[data-online-processing="${slot}"]`)?.focus({preventScroll:true});
@@ -436,6 +499,7 @@
   }
   document.getElementById('online-help-button').addEventListener('click', () => document.getElementById('online-help').showModal());
   Show.bindSoundToggle(document.getElementById('auction-sound'));
+  Show.bindMusicToggle(document.getElementById('auction-music'));
   document.getElementById('online-close-help').addEventListener('click', () => document.getElementById('online-help').close());
   review.addEventListener('close', () => { pendingReview = null; });
   document.addEventListener('visibilitychange', () => { if (!document.hidden && state.credentials && !state.busy && !state.polling) poll(); });

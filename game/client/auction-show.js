@@ -6,16 +6,24 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (root) {
   'use strict';
   const SOUND_KEY = 'secondvalue:auction-sound';
+  const MUSIC_KEY = 'secondvalue:auction-music';
+  const SAMPLES = Object.freeze({paper:'/assets/audio/auction-paper-v1.mp3',wood:'/assets/audio/auction-gavel-v1.mp3',coin:'/assets/audio/auction-coins-v1.mp3'});
+  const MUSIC_FILE = '/assets/audio/old-harbor-v1.mp3';
   const histories = new WeakMap();
   const boundButtons = new WeakSet();
+  const boundMusicButtons = new WeakSet();
   const soundButtons = new Set();
+  const musicButtons = new Set();
   const activeNotes = new Set();
+  const sampleLoads = new Map(), samples = new Map();
   const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const number = value => Number.isFinite(value) ? value : 0;
   const money = value => number(value).toLocaleString('en-US');
   const signed = value => (number(value) > 0 ? '+' : number(value) < 0 ? '−' : '') + money(Math.abs(number(value)));
-  let sound = false, audio = null, audioUnlocked = false, liveScene = null, liveTimer = null;
-  try { sound = root.localStorage?.getItem(SOUND_KEY) === 'on'; } catch { /* Optional preference. */ }
+  let sound = false, soundWanted = false, soundStarting = false, soundEpoch = 0, audio = null;
+  let music = null, musicWanted = false, musicPlaying = false, musicStarting = false, musicUnlocked = false, musicEpoch = 0;
+  let liveScene = null, liveTimer = null, gesturesBound = false;
+  try { soundWanted = root.localStorage?.getItem(SOUND_KEY) === 'on'; musicWanted = root.localStorage?.getItem(MUSIC_KEY) === 'on'; } catch { /* Optional preferences. */ }
 
   function localize(node) {
     const locale = root.SecondValueOnlineLocale || root.SecondValueLocale;
@@ -53,20 +61,131 @@
   function updateButton(button) {
     button.setAttribute('aria-pressed', String(sound));
     button.setAttribute('aria-label', 'Auction sounds');
-    button.innerHTML = `<span class="sound-icon" aria-hidden="true">${sound ? '♪' : '♩'}</span><span>${sound ? 'Sound on' : 'Sound off'}</span>`;
+    button.setAttribute('title', soundWanted && !sound ? 'Click to enable audio' : sound ? 'Sound on' : 'Sound off');
+    button.innerHTML = `<span class="sound-icon" aria-hidden="true">${sound ? '♪' : '♩'}</span><span>${sound ? 'Sound on' : soundWanted ? 'Sound paused' : 'Sound off'}</span>`;
     localize(button);
   }
 
-  function unlockAudio() {
-    if (!sound) return;
+  function updateMusicButton(button) {
+    button.setAttribute('aria-pressed', String(musicPlaying));
+    button.setAttribute('aria-label', 'Background music');
+    button.setAttribute('title', musicWanted && !musicPlaying ? 'Click to enable audio' : musicPlaying ? 'Music on' : 'Music off');
+    button.innerHTML = `<span class="sound-icon" aria-hidden="true">${musicPlaying ? '♫' : '♩'}</span><span>${musicPlaying ? 'Music on' : musicWanted ? 'Music paused' : 'Music off'}</span>`;
+    localize(button);
+  }
+
+  function updateAudioButtons() {
+    for (const [buttons,update] of [[soundButtons,updateButton],[musicButtons,updateMusicButton]]) for (const button of buttons) {
+      if (button.isConnected === false) buttons.delete(button);
+      else update(button);
+    }
+  }
+
+  function remember(key, enabled) {
+    try { root.localStorage?.setItem(key, enabled ? 'on' : 'off'); } catch { /* Optional preferences. */ }
+  }
+
+  function stopNotes() {
+    for (const source of activeNotes) { try { source.stop(); } catch { /* Already ended. */ } }
+    activeNotes.clear();
+  }
+
+  function loadSamples() {
+    return Promise.all(Object.entries(SAMPLES).map(([kind,url]) => {
+      if (!sampleLoads.has(kind)) {
+        const loading = Promise.resolve().then(() => root.fetch(url)).then(response => {
+          if (!response.ok) throw new Error('Audio sample unavailable');
+          return response.arrayBuffer();
+        }).then(data => audio.decodeAudioData(data)).then(buffer => { samples.set(kind,buffer); return buffer; }).catch(() => {
+          // Keep completed samples and shared in-flight work, but let an explicit enable retry failures.
+          if (sampleLoads.get(kind) === loading) sampleLoads.delete(kind);
+          return null;
+        });
+        sampleLoads.set(kind,loading);
+      }
+      return sampleLoads.get(kind);
+    }));
+  }
+
+  function unlockSound(preview = false) {
+    if (!soundWanted || soundStarting || (sound && (!audio?.state || audio.state === 'running'))) return;
+    const epoch = ++soundEpoch;
+    soundStarting = true; sound = false;
     try {
       const Context = root.AudioContext || root.webkitAudioContext;
-      if (!Context) return;
-      audio ||= new Context();
-      audioUnlocked = true;
-      const resumed = audio.resume?.();
-      if (resumed?.catch) resumed.catch(() => {});
-    } catch { audioUnlocked = false; }
+      if (!Context || typeof root.fetch !== 'function') throw new Error('Audio unavailable');
+      if (!audio) {
+        audio = new Context();
+        audio.addEventListener?.('statechange',() => {
+          if (audio.state !== 'running' && sound) { sound = false; updateAudioButtons(); }
+        });
+      }
+      const ready = loadSamples();
+      Promise.resolve(audio.resume?.()).then(() => {
+        if (epoch !== soundEpoch || !soundWanted) return;
+        if (audio.state && audio.state !== 'running') throw new Error('Audio suspended');
+        sound = true; soundStarting = false; updateAudioButtons();
+        // Loading never queues a past auction event. Only this explicit enable click gets a preview.
+        return ready.then(loaded => {
+          if (epoch !== soundEpoch || !soundWanted) return;
+          if (!loaded.some(Boolean)) { soundWanted = false; sound = false; remember(SOUND_KEY,false); updateAudioButtons(); return; }
+          if (preview && !root.document?.hidden) note('paper');
+        });
+      }).catch(() => {
+        if (epoch !== soundEpoch) return;
+        sound = false; soundWanted = false; soundStarting = false; remember(SOUND_KEY,false); updateAudioButtons();
+      });
+    } catch {
+      sound = false; soundWanted = false; soundStarting = false; remember(SOUND_KEY,false); updateAudioButtons();
+    }
+  }
+
+  function pauseMusic() {
+    ++musicEpoch; musicPlaying = false; musicStarting = false;
+    try { music?.pause(); } catch { /* Optional audio device. */ }
+    updateAudioButtons();
+  }
+
+  function playMusic(fromGesture = false) {
+    if (!musicWanted || musicStarting || musicPlaying || root.document?.hidden) return;
+    if (fromGesture) musicUnlocked = true;
+    if (!musicUnlocked) return;
+    const epoch = ++musicEpoch;
+    musicStarting = true;
+    try {
+      if (!music) {
+        if (typeof root.Audio !== 'function') throw new Error('Music unavailable');
+        music = new root.Audio(); music.preload = 'none'; music.loop = true; music.volume = .18; music.src = MUSIC_FILE;
+        music.addEventListener?.('error', () => { musicWanted = false; remember(MUSIC_KEY,false); pauseMusic(); });
+      }
+      Promise.resolve(music.play()).then(() => {
+        if (epoch !== musicEpoch || !musicWanted || root.document?.hidden) {
+          if (!musicWanted || root.document?.hidden) music.pause();
+          return;
+        }
+        musicPlaying = true; musicStarting = false; updateAudioButtons();
+      }).catch(() => {
+        if (epoch !== musicEpoch) return;
+        musicWanted = false; remember(MUSIC_KEY,false); pauseMusic();
+      });
+    } catch { musicWanted = false; remember(MUSIC_KEY,false); pauseMusic(); }
+  }
+
+  function bindGestures() {
+    if (gesturesBound) return;
+    gesturesBound = true;
+    const gesture = event => {
+      // A toggle click must choose its own state, without a capture handler racing it.
+      if (event?.target?.closest?.('.auction-sound-toggle,.auction-music-toggle')) return;
+      unlockSound(); playMusic(true);
+    };
+    root.document?.addEventListener?.('pointerdown',gesture,{capture:true,passive:true});
+    root.document?.addEventListener?.('keydown',gesture,{capture:true});
+    root.document?.addEventListener?.('visibilitychange',() => {
+      if (root.document.hidden) { stopNotes(); pauseMusic(); }
+      else if (musicWanted && musicUnlocked) playMusic();
+    });
+    root.addEventListener?.('pagehide',() => { stopNotes(); pauseMusic(); });
   }
 
   function bindSoundToggle(button) {
@@ -77,36 +196,35 @@
     boundButtons.add(button);
     button.classList.add('auction-sound-toggle');
     button.addEventListener('click', () => {
-      sound = !sound;
-      try { root.localStorage?.setItem(SOUND_KEY, sound ? 'on' : 'off'); } catch { /* Sound remains usable. */ }
-      if (sound) unlockAudio();
-      else for (const oscillator of activeNotes) { try { oscillator.stop(); } catch { /* Already ended. */ } }
-      for (const item of soundButtons) {
-        if (item.isConnected === false) soundButtons.delete(item);
-        else updateButton(item);
-      }
+      if (sound || soundStarting) { soundWanted = false; sound = false; soundStarting = false; ++soundEpoch; stopNotes(); }
+      else { soundWanted = true; unlockSound(true); }
+      remember(SOUND_KEY,soundWanted); updateAudioButtons();
     });
-    // A stored preference still needs a real gesture before Web Audio is used.
-    button.ownerDocument?.addEventListener?.('pointerdown', unlockAudio, {capture:true, passive:true});
+    bindGestures();
+  }
+
+  function bindMusicToggle(button) {
+    if (!button) return;
+    musicButtons.add(button); updateMusicButton(button);
+    if (boundMusicButtons.has(button)) return;
+    boundMusicButtons.add(button); button.classList.add('auction-music-toggle');
+    button.addEventListener('click',() => {
+      if (musicPlaying || musicStarting) { musicWanted = false; pauseMusic(); }
+      else { musicWanted = true; playMusic(true); }
+      remember(MUSIC_KEY,musicWanted); updateAudioButtons();
+    });
+    bindGestures();
   }
 
   function note(kind, delay = 0) {
-    if (!sound || !audioUnlocked || !audio) return;
+    if (!sound || !soundWanted || !audio || root.document?.hidden || !samples.has(kind) || (audio.state && audio.state !== 'running')) return;
     try {
-      const start = audio.currentTime + delay;
-      const sounds = kind === 'coin' ? [[1120,.09,.035],[1490,.1,.025]] : kind === 'wood' ? [[155,.11,.13],[75,.15,.09]] : [[780,.055,.025],[590,.06,.02]];
-      sounds.forEach(([frequency,duration,volume], index) => {
-        const oscillator = audio.createOscillator(), gain = audio.createGain();
-        oscillator.type = kind === 'wood' ? 'triangle' : 'sine';
-        oscillator.frequency.setValueAtTime(frequency, start + index * .025);
-        gain.gain.setValueAtTime(.001, start + index * .025);
-        gain.gain.exponentialRampToValueAtTime(volume, start + index * .025 + .008);
-        gain.gain.exponentialRampToValueAtTime(.001, start + index * .025 + duration);
-        oscillator.connect(gain); gain.connect(audio.destination);
-        activeNotes.add(oscillator);
-        oscillator.onended = () => { activeNotes.delete(oscillator); oscillator.disconnect?.(); gain.disconnect?.(); };
-        oscillator.start(start + index * .025); oscillator.stop(start + index * .025 + duration + .02);
-      });
+      const source = audio.createBufferSource(), gain = audio.createGain();
+      source.buffer = samples.get(kind); gain.gain.setValueAtTime(kind === 'wood' ? .8 : kind === 'coin' ? .6 : .55,audio.currentTime);
+      source.connect(gain); gain.connect(audio.destination); activeNotes.add(source);
+      source.onended = () => { activeNotes.delete(source); source.disconnect?.(); gain.disconnect?.(); };
+      try { source.start(audio.currentTime + delay); }
+      catch { activeNotes.delete(source); source.disconnect?.(); gain.disconnect?.(); }
     } catch { /* A blocked, suspended or unavailable audio device never affects play. */ }
   }
 
@@ -159,8 +277,8 @@
   }
 
   root.addEventListener?.('secondvalue:languagechange', () => {
-    for (const button of soundButtons) updateButton(button);
+    updateAudioButtons();
     if (liveScene) localize(liveScene);
   });
-  return Object.freeze({sourceMarkup,valuationMarkup,present,bindSoundToggle,get soundEnabled(){return sound;}});
+  return Object.freeze({sourceMarkup,valuationMarkup,present,bindSoundToggle,bindMusicToggle,get soundEnabled(){return sound;},get musicEnabled(){return musicPlaying;}});
 });

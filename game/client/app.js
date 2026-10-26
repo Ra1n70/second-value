@@ -4,6 +4,8 @@
   const L = window.SecondValueLocale;
   const Art = window.SecondValueArt;
   const Show = window.SecondValueShow;
+  const Clues = window.SecondValueRoundClues;
+  const SaleCompare = window.SecondValueSaleComparison;
   const Notes = window.SecondValueNotebook;
   const Tutorial = window.SecondValueTutorial;
   const main = document.getElementById('game');
@@ -150,10 +152,28 @@
     const privateKnown=game.role==='appraiser'&&game.inspected.includes(index);
     return {known:publicKnown||privateKnown,source:publicKnown?'Public reveal':privateKnown?'Private note':'Unconfirmed'};
   }
+  function roundCluesMarkup() {
+    if(!game||!['inspect','bid'].includes(game.phase))return '';
+    const round=game.round,countsPublic=round===2||round===3;
+    let publicLot=null;
+    if(round===3&&Number.isInteger(game.publicIndex)&&game.publicIndex>=0&&game.publicIndex<game.items.length) {
+      const info=informationFor(game.publicIndex),item=game.items[game.publicIndex];
+      if(info.known&&info.source==='Public reveal')publicLot={slot:game.publicIndex,label:item.name,base:item.base,known:true,source:info.source};
+    }
+    return Clues.markup({round,genuineCount:countsPublic?game.items.filter(item=>item.genuine).length:null,repairableCount:round===3?game.items.filter(item=>item.genuine&&item.condition==='damaged'&&item.repair).length:null,publicLot});
+  }
+  function selectRoundClue(slot) {
+    if(!game||!['inspect','bid'].includes(game.phase)||game.round!==3||!Number.isInteger(slot)||slot!==game.publicIndex||slot<0||slot>=game.items.length)return;
+    if(informationFor(slot).source!=='Public reveal')return;
+    game.selected=slot;save();render();
+    main.querySelector(`.object-button[data-item="${slot}"]`)?.focus({preventScroll:true});
+    main.querySelector('#selected-object')?.scrollIntoView({block:'nearest',behavior:window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches?'auto':'smooth'});
+  }
   function objectCards() {
     return game.items.map((item,index)=>{
       const info=informationFor(index),range=E.catalogFor(item.shape,game);
-      return `<button type="button" class="object-button ${info.known?'object-known':''}" data-item="${index}" aria-label="Select object ${index+1}" aria-controls="selected-object" aria-pressed="${game.selected===index}"><span class="object-head"><span class="object-letter">${String.fromCharCode(65+index)}</span><span class="object-status ${info.source==='Public reveal'?'public-status':''}">${info.source}</span></span><span class="object-art" aria-hidden="true">${itemArt(item,info.known)}${info.known?`<span class="authenticity-stamp ${item.genuine?'is-genuine':'is-reproduction'}">${item.genuine?'Genuine':'Reproduction'}</span>`:''}</span><span class="object-label">${info.known?item.name:E.SHAPES[item.shape]}</span><span class="object-range"><span>${info.known?'Base price':'Catalog range'}</span><span>${info.known?item.base:range.min+'–'+range.max}</span></span></button>`;
+      const newPublic=game.round===3&&index===game.publicIndex&&info.source==='Public reveal';
+      return `<button type="button" class="object-button ${info.known?'object-known':''} ${newPublic?'is-round-reveal':''}" data-item="${index}" aria-label="Select object ${index+1}" aria-controls="selected-object" aria-pressed="${game.selected===index}"><span class="object-head"><span class="object-letter">${String.fromCharCode(65+index)}</span><span class="object-status ${info.source==='Public reveal'?'public-status':''} ${newPublic?'round-reveal-mark':''}">${newPublic?'New this round':info.source}</span></span><span class="object-art" aria-hidden="true">${itemArt(item,info.known)}${info.known?`<span class="authenticity-stamp ${item.genuine?'is-genuine':'is-reproduction'}">${item.genuine?'Genuine':'Reproduction'}</span>`:''}</span><span class="object-label">${info.known?item.name:E.SHAPES[item.shape]}</span><span class="object-range"><span>${info.known?'Base price':'Catalog range'}</span><span>${info.known?item.base:range.min+'–'+range.max}</span></span></button>`;
     }).join('');
   }
   function confirmedNotes() {
@@ -181,7 +201,7 @@
   }
   function inspection() {
     return `<div class="workbench-head"><div class="lot-heading"><div><h2 class="lot-title">The auction table</h2><span class="round-preview">${nextCluePreview()}</span></div></div><div class="workbench-tools">${reserveNotice()}${Notes.buttonMarkup()}<details class="round-rules"><summary>Round rules</summary><div class="round-rules-content"><p>${roundRule()}</p><p>Tie priority</p><p>${game.priority.map(bidderName).join(' → ')}</p></div></details></div></div>
-      <div class="workbench-grid"><section class="auction-table-column"><div class="crate"><div class="crate-top"><span>One crate / six objects</span><span>Choose an object to see its details.</span></div><div class="objects">${objectCards()}</div><a class="mobile-detail-link" href="#selected-object">Selected object details ↓</a></div>
+      ${roundCluesMarkup()}<div class="workbench-grid"><section class="auction-table-column"><div class="crate"><div class="crate-top"><span>One crate / six objects</span><span>Choose an object to see its details.</span></div><div class="objects">${objectCards()}</div><a class="mobile-detail-link" href="#selected-object">Selected object details ↓</a></div>
       </section><aside class="workbench-sidebar">${objectDetail()}</aside></div>${actionDock()}
       <div class="table-reference"><details class="known-register"><summary>Confirmed notes</summary>${confirmedNotes()}</details>${game.history.length?`<details class="previous-bids"><summary>Previous round bids</summary>${historyMarkup()}</details>`:''}${catalog()}${participants()}<details class="role-reference"><summary>Your role ability</summary><p>${E.ROLES[game.role].passive}</p></details>${session.rulesVersion<4?'<details class="rules-reference"><summary>Saved session rules</summary><p>This saved session keeps its original rules. New sessions use the updated balance.</p></details>':''}</div>`;
   }
@@ -189,6 +209,20 @@
     const cash=E.getCash(game),minimum=minimumBid(),maximum=Math.max(minimum,cash),unable=cash<minimum;
     const amount=Number(draftBid),valid=Number.isSafeInteger(amount)&&amount>=minimum&&amount<=cash;
     return `<button type="button" class="back-button" id="back-to-clues">← Return to clues</button><form id="bid-form" novalidate><div class="bid-editor"><label for="bid-input"><span>Your sealed bid</span><span>Whole crate</span></label><div class="amount-input"><button type="button" id="bid-decrease" aria-label="Decrease bid by 25" ${unable?'disabled':''}>−</button><input id="bid-input" type="number" min="${minimum}" max="${maximum}" step="1" inputmode="numeric" value="${escape(draftBid)}" ${unable?'disabled':''} aria-describedby="bid-limit bid-error"><button type="button" id="bid-increase" aria-label="Increase bid by 25" ${unable?'disabled':''}>+</button></div><input id="bid-range" type="range" min="${minimum}" max="${maximum}" step="1" value="${Math.max(minimum,Math.min(maximum,amount||minimum))}" ${unable?'disabled':''} aria-label="Adjust bid"></div><div class="dock-balance"><span>Cash after purchase</span><strong id="bid-balance">${valid?money(cash-amount):'—'}</strong><small>Before sale proceeds and ability costs.</small><small id="bid-limit">Your bid limit: ${money(cash)}.</small></div><div class="bid-actions"><button type="button" id="pass-bid">Pass this round</button><button type="submit" class="primary" ${unable?'disabled':''}>Review bid →</button></div><div id="bid-error" class="error" role="alert"></div></form>`;
+  }
+  function reviewCrosscheck(action) {
+    let storage;
+    try { storage=window.localStorage; } catch { /* Match the in-memory notebook when storage is blocked. */ }
+    const source=E.SOURCES[game.sourceId];
+    const lots=game.items.map((item,slot)=>{
+      const info=informationFor(slot);
+      return {slot,label:info.known?item.name:E.SHAPES[item.shape],known:info.known,source:info.source,range:E.catalogFor(item.shape,game),...(info.known?{base:item.base,genuine:item.genuine,condition:item.condition}:{})};
+    });
+    return Notes.reviewMarkup({key:`solo:${session.seed}:${session.auctionNumber}`,storage,round:game.round,amount:action.amount,pass:action.pass===true,lots,clues:{
+      genuineCount:game.round>=2?game.items.filter(item=>item.genuine).length:null,
+      repairableCount:game.round===3?game.items.filter(item=>item.genuine&&item.condition==='damaged'&&item.repair).length:null,
+      sourceName:source?.name,sourceHint:source?.hint
+    }});
   }
   function reviewAction(action) {
     pendingAction=action;
@@ -198,7 +232,7 @@
     const explanation=leaving?'Your completed auctions stay final. You can keep playing by going back.':passing?'You will make no offer this round. Confirming reveals all bids immediately.': 'Confirming reveals all bids immediately. This round cannot be withdrawn after reveal.';
     const passRisk=game.round<3?'Another bidder may buy now. A next round opens only if this round does not sell.':'Another bidder may buy now. This is the final round.';
     const body=document.getElementById('review-body');
-    body.innerHTML=`<span class="eyebrow">${leaving?'SESSION EXIT':'NOT SUBMITTED YET'}</span><h2 id="review-title">${title}</h2><div class="review-amount">${summary}</div>${!leaving&&!passing?`<div class="receipt-line"><span>Cash after purchase</span><strong>${money(E.getCash(game)-action.amount)}</strong></div><p class="small muted">Before sale proceeds and ability costs.</p>`:''}<p id="review-description"><span>${explanation}</span>${passing?`<br><span class="pass-risk">${passRisk}</span>`:''}</p>${!leaving?'<p class="reveal-boundary">After reveal, bids and passes are final for this round.</p>':''}<div class="review-actions"><button type="button" id="cancel-review">${leaving?'Keep playing':passing?'Cancel pass':'Withdraw & edit'}</button><button type="button" class="primary" id="confirm-review">${leaving?'Confirm exit':passing?'Confirm pass & reveal':'Confirm & reveal bids'}</button></div><div id="review-error" class="error" role="alert"></div>`;
+    body.innerHTML=`<span class="eyebrow">${leaving?'SESSION EXIT':'NOT SUBMITTED YET'}</span><h2 id="review-title">${title}</h2><div class="review-amount">${summary}</div>${!leaving?reviewCrosscheck(action):''}${!leaving&&!passing?`<div class="receipt-line"><span>Cash after purchase</span><strong>${money(E.getCash(game)-action.amount)}</strong></div><p class="small muted">Before sale proceeds and ability costs.</p>`:''}<p id="review-description"><span>${explanation}</span>${passing?`<br><span class="pass-risk">${passRisk}</span>`:''}</p>${!leaving?'<p class="reveal-boundary">After reveal, bids and passes are final for this round.</p>':''}<div class="review-actions"><button type="button" id="cancel-review">${leaving?'Keep playing':passing?'Cancel pass':'Withdraw & edit'}</button><button type="button" class="primary" id="confirm-review">${leaving?'Confirm exit':passing?'Confirm pass & reveal':'Confirm & reveal bids'}</button></div><div id="review-error" class="error" role="alert"></div>`;
     L.localize(body);
     body.querySelector('#cancel-review').addEventListener('click',()=>review.close());
     body.querySelector('#confirm-review').addEventListener('click',()=>{
@@ -209,7 +243,7 @@
         review.close();save();render();
       } catch(error) {body.querySelector('#review-error').textContent=L.translate(error.message);}
     });
-    save();review.showModal();body.querySelector('#cancel-review').focus();
+    save();review.showModal();body.querySelector('#cancel-review').focus({preventScroll:true});review.scrollTop=0;
   }
   function truth() {
     return `<div class="truth-grid">${game.items.map(item=>`<div class="truth-row"><span class="truth-art" aria-hidden="true">${itemArt(item,true)}</span><div><p>${item.name}</p><small>${itemAttributes(item)}</small></div><strong>${item.base} base</strong></div>`).join('')}</div>`;
@@ -219,17 +253,22 @@
     return `<div class="receipt" aria-live="polite"><span class="eyebrow">${preview?'SALE PREVIEW':'FINAL RECEIPT'} · VIRTUAL COINS</span><div class="receipt-line"><span>Cash before this crate</span><strong>${money(E.getCash(game))}</strong></div><div class="receipt-line"><span>Winning bid</span><strong>${receipt.paid?'−'+money(receipt.paid):'0'}</strong></div><div class="receipt-line"><span>Sale proceeds</span><strong>${signed(receipt.sale)}</strong></div><div class="receipt-line"><span>Ability bonus</span><strong>${signed(receipt.bonus)}</strong></div><div class="receipt-line"><span>Processing fees</span><strong>${receipt.cost?'−'+money(receipt.cost):'0'}</strong></div>${processed(receipt.repairs,'Repairs selected:')}${processed(receipt.pair,'Collection pair:')}${processed(receipt.ability,'Ability selection:')}<div class="receipt-profit"><span>${receipt.profit<0?'Crate loss':'Crate profit'}</span><strong class="${receipt.profit<0?'negative':'positive'}">${signed(receipt.profit)}</strong></div><div class="receipt-line"><span>${preview?'Cash after sale':'Cash after this crate'}</span><strong>${money(receipt.cash)}</strong></div></div>`;
   }
   function disposal() {
-    let plan,selectionError='';
+    let special=null,specialError='';
     const options={theme:game.theme,...saleSelection()};
     const ordinary=E.salePlan(game.role,game.items,'ordinary',E.getCash(game)-game.bid);
-    try { plan=E.salePlan(game.role,game.items,saleMode,E.getCash(game)-game.bid,saleMode==='special'?options:{}); }
-    catch(error) { selectionError=error.message;plan=ordinary; }
-    const preview={...plan,paid:game.bid,profit:plan.recovery-game.bid,cash:E.getCash(game)-game.bid+plan.recovery};
+    if(game.role!=='appraiser') {
+      try { special=E.salePlan(game.role,game.items,'special',E.getCash(game)-game.bid,options); }
+      catch(error) { specialError=error.message; }
+    }
+    const plan=saleMode==='special'&&game.role!=='appraiser'?special:ordinary;
+    const selectionError=plan?'':specialError;
+    const preview=plan?{...plan,paid:game.bid,profit:plan.recovery-game.bid,cash:E.getCash(game)-game.bid+plan.recovery}:null;
+    const comparison=SaleCompare.markup({ordinary,special,paid:game.bid,selectedMode:saleMode,hasAbility:game.role!=='appraiser',error:specialError});
     const specialLabel=game.role==='restorer'?'Repair selected objects':game.role==='collector'?'Deliver selected collection':E.ROLES[game.role].skill;
     const selection=game.role==='restorer'?repairSelection():game.role==='collector'?pairSelection():abilitySelection();
     return `<div class="workbench-head"><div><span class="eyebrow">SOLD TO YOU · ${money(game.bid)} COINS</span><h2 class="lot-title">Choose how to sell</h2></div><div class="workbench-tools">${Notes.buttonMarkup()}</div></div>
-      <div class="auction-layout phase-layout"><section>${truth()}<div class="sale-options">${game.role!=='appraiser'?`<button type="button" data-sale="special" aria-pressed="${saleMode==='special'}" class="sale-option"><span>${specialLabel}<small>${game.role==='restorer'?'Choose up to two repairs. Fees must be funded before each repair.':game.role==='collector'?'Choose one genuine pair in your locked theme, with different identities and categories.':abilityInstruction()}</small></span></button>`:''}<button type="button" data-sale="ordinary" aria-pressed="${saleMode==='ordinary'}" class="sale-option"><span>Sell at ordinary prices<small>Every role receives the same base prices.</small></span><span>${money(ordinary.recovery)} after fees</span></button></div>${saleMode==='special'?selection:''}<p class="small muted" style="margin-top:15px">All objects are sold now. Your cash carries into the next auction; item storage comes later.</p><details class="previous-bids"><summary>Previous round bids</summary>${historyMarkup()}${participants(true)}</details></section>
-      <aside class="side-panel stage-controls phase-controls"><div class="stage-heading"><span class="eyebrow">03 / PROCESS & SELL</span><h3>Your settlement</h3></div><p>Review processing choices, then settle this crate.</p>${selectionError?'<p class="selection-warning">Complete a valid selection to see its receipt. Ordinary sale totals are shown below.</p>':''}${receiptHtml(preview,true)}${netGainMarkup(plan.recovery-ordinary.recovery)}<button type="button" class="primary full" id="confirm-sale" ${selectionError?'disabled':''}>Confirm sale & settle crate →</button><p class="action-hint">Your chosen sale can make a profit or a loss. The purchase price is already locked.</p><div id="sale-error" class="error" role="alert">${escape(selectionError)}</div></aside></div>`;
+      <div class="auction-layout phase-layout sale-disposal"><section>${truth()}${comparison}<div class="sale-options">${game.role!=='appraiser'?`<button type="button" data-sale="special" aria-pressed="${saleMode==='special'}" class="sale-option"><span>${specialLabel}<small>${game.role==='restorer'?'Choose up to two repairs. Fees must be funded before each repair.':game.role==='collector'?'Choose one genuine pair in your locked theme, with different identities and categories.':abilityInstruction()}</small></span></button>`:''}<button type="button" data-sale="ordinary" aria-pressed="${saleMode==='ordinary'}" class="sale-option"><span>Sell at ordinary prices<small>Every role receives the same base prices.</small></span></button></div>${saleMode==='special'?selection:''}<p class="small muted" style="margin-top:15px">All objects are sold now. Your cash carries into the next auction; item storage comes later.</p><details class="previous-bids"><summary>Previous round bids</summary>${historyMarkup()}${participants(true)}</details></section>
+      <aside class="side-panel stage-controls phase-controls"><div class="stage-heading"><span class="eyebrow">03 / PROCESS & SELL</span><h3>Your settlement</h3></div><p>Review processing choices, then settle this crate.</p><div class="sale-selected-summary"><span>Selected plan</span><h3>${saleMode==='special'&&game.role!=='appraiser'?'Ability processing':'Ordinary sale'}</h3>${preview?`<div class="receipt-profit"><span>Final profit / loss</span><strong class="${preview.profit<0?'negative':'positive'}">${signed(preview.profit)}</strong></div><div class="receipt-line"><span>Cash after sale</span><strong>${money(preview.cash)}</strong></div><details class="latest-receipt"><summary>Sale preview</summary>${receiptHtml(preview,true)}</details>`:'<p class="selection-warning">Choose the ability targets to compare.</p>'}</div><button type="button" class="primary full" id="confirm-sale" ${!plan?'disabled':''}>Confirm sale & settle crate →</button><p class="action-hint">Your chosen sale can make a profit or a loss. The purchase price is already locked.</p><div id="sale-error" class="error" role="alert">${escape(selectionError)}</div></aside></div>`;
   }
   function repairSelection() {
     const eligible=game.items.filter(item=>item.genuine&&item.repair);
@@ -244,9 +283,6 @@
   }
   function abilityInstruction() {
     return ({salvager:'Choose up to two reproductions. Each sells for 90, with a 15 processing fee.',curator:'Choose exactly three genuine, intact objects from different categories. Pay one 25 fee.',broker:'Choose one genuine, intact object. Packing and delivery cost 25; a low-value customer sale can lose money.'})[game.role]||'';
-  }
-  function netGainMarkup(delta) {
-    return `<div class="ability-net"><span>Net gain vs ordinary sale</span><strong class="${delta<0?'negative':'positive'}">${signed(delta)}</strong></div>`;
   }
   function abilitySelection() {
     if(!['salvager','curator','broker'].includes(game.role))return '';
@@ -320,6 +356,7 @@
     }):[]});
   }
   function bind() {
+    main.querySelectorAll('[data-round-clue-slot]').forEach(button=>button.addEventListener('click',()=>selectRoundClue(Number(button.dataset.roundClueSlot))));
     main.querySelectorAll('[data-role]').forEach(button=>button.addEventListener('click',()=>{selectedRole=button.dataset.role;save();render();}));
     main.querySelectorAll('[data-theme]').forEach(button=>button.addEventListener('click',()=>{selectedTheme=button.dataset.theme;save();render();}));
     main.querySelector('#start-game')?.addEventListener('click',start);
@@ -357,6 +394,7 @@
   }
   const help=document.getElementById('help');
   Show.bindSoundToggle(document.getElementById('auction-sound'));
+  Show.bindMusicToggle(document.getElementById('auction-music'));
   const review=document.getElementById('action-review');
   review.addEventListener('close',()=>{if(!review.open)pendingAction=null;});
   document.getElementById('close-review').addEventListener('click',()=>review.close());

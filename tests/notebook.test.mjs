@@ -184,6 +184,22 @@ test('blocked storage does not interrupt edits and labels are escaped in dialog 
   assert.equal(dialog.querySelector('[data-notebook-storage]').hidden,false);
 });
 
+test('bid review reads matching in-memory round drafts despite blocked storage and performs no writes',()=>{
+  const ui=surface();let writes=0;
+  const blocked={getItem(){throw new Error('blocked');},setItem(){writes++;throw new Error('blocked');}},key='room:PRIVATE:me:1';
+  ui.opener();ui.N.bind(ui.container,{key,storage:blocked,lots:[],decision:{round:2,editable:true}});
+  const input=ui.dialog.querySelector('[data-decision-ceiling]'),plan=ui.dialog.querySelector('[data-decision-plan]');
+  input.value='450';input.emit('input');plan.value='watch';plan.emit('change');
+  const before=writes,options={key,storage:blocked,round:2,amount:500,pass:false,lots:[]};
+  assert.deepEqual(plain(ui.N.readRoundDecision(options)),{ceiling:450,stance:'watch',invalid:false});
+  assert.match(ui.N.reviewMarkup(options),/Above your recorded maximum by/);assert.equal(writes,before);
+  input.value='12e';input.emit('input');const invalid=ui.N.reviewMarkup(options);
+  assert.match(invalid,/Your recorded maximum is invalid\./);assert.doesNotMatch(invalid,/Above your recorded maximum by/);
+  assert.equal(ui.N.readRoundDecision({...options,round:3}).ceiling,null);
+  assert.equal(ui.N.readRoundDecision({...options,key:'room:PRIVATE:other:1'}).ceiling,null);
+  assert.equal(ui.N.readRoundDecision({...options,storage:{getItem(){throw new Error('blocked');}}}).stance,'');
+});
+
 test('round records retain old v1 item notes and persist only authored, bounded fields',()=>{
   const notes=N.normalizeNotes({version:1,items:{0:{mark:'interested',estimate:'80'}},rounds:{1:{ceiling:'0',stance:'watch',reason:'😀'.repeat(170),winningBid:700,recovery:900},2:{ceiling:'12e',stance:'bad',reason:42},3:{ceiling:'999999',stance:'bid',reason:'line\nreason\u0000'}}});
   assert.equal(notes.items[0].estimate,'80');

@@ -1,0 +1,11 @@
+/* Independent, compact sound and music controls in the existing header. */
+.header-audio-controls{display:flex;align-items:center;gap:7px;min-width:0}
+.site-header .header-audio-controls>button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:34px;padding:6px 9px;border:1px solid #8d9a7145;border-radius:3px;background:transparent;color:#bac4b4;font:500 14px/1.4 var(--sans,Arial,sans-serif);white-space:nowrap;text-decoration:none}
+.site-header .header-audio-controls>button:hover{background:#bd9a5812;border-color:#bc9e685f;color:#ead5ac}
+.site-header .header-audio-controls>button[aria-pressed=true]{color:#e0c183;border-color:#bc9e685f;background:#bd9a580c}
+.site-header .header-audio-controls>button:focus-visible{outline:2px solid #d8b371;outline-offset:3px}
+.site-header .header-audio-controls .sound-icon,.site-header .header-audio-controls .music-icon{font-size:17px;line-height:1}
+.audio-credit{margin:12px 0 20px;font-size:14px;line-height:1.6;color:var(--muted,#b6c0ac)}
+.audio-credit a{color:var(--gold,#d8b371);text-underline-offset:3px}
+@media(max-width:1050px){body .site-header{display:grid;grid-template-columns:minmax(0,1fr);align-items:center;gap:12px}body .site-header .wordmark{min-width:0}body .site-header .brand-title{white-space:nowrap}body .site-header .header-tools{display:flex;flex-direction:row;align-items:center;flex-wrap:wrap;justify-content:flex-start;width:100%;gap:8px 12px}.site-header .header-tools .online-connection{margin-right:auto}.site-header .header-audio-controls>button{padding:5px 7px}}
+@media(max-width:740px){.online-mode .site-header{grid-template-columns:minmax(0,1fr);gap:12px}.online-mode .header-tools{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;flex-wrap:wrap;width:100%;gap:8px 12px}.online-mode .header-tools .online-connection{margin-right:auto;text-align:left}.site-header .header-audio-controls{gap:5px}.site-header .header-audio-controls>button{min-height:32px;padding:5px 7px;font-size:13px}}

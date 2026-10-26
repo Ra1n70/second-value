@@ -487,12 +487,16 @@ test('crate source stories, valuation copy and reveal controls switch in place i
     "Hypothetical results use this winning price and each player's cash before bidding. They are not earnings.",
     'Role advantage', 'Profit at this price', 'Ordinary sale', 'Sealed bids opened',
     'No hammer this round', 'SOLD', 'Crate unveiled', 'Sale settled', 'Your result',
-    'Sound off', 'Sound on', 'Auction sounds',
+    'Sound off', 'Sound on', 'Auction sounds', 'Sound paused',
+    'Music off', 'Music on', 'Music paused', 'Background music', 'Click to enable audio',
+    'Background music:', 'Edited for volume and looping.',
   ];
   for (const online of [false, true]) {
     const h = await localeHarness({ online });
     const labels = sources.map(source => h.main.append(new Element('p', {}, source)));
     const sound = h.main.append(new Element('button', { 'aria-label': 'Sound off', title: 'Sound off' }, 'Sound off'));
+    const music = h.main.append(new Element('button', { 'aria-label': 'Background music', title: 'Click to enable audio' }, 'Music paused'));
+    const musicCredit = h.main.append(new Element('a', { 'data-no-localize': '', href: 'https://opengameart.org/content/soft-mysterious-harp-loop' }, 'Soft Mysterious Harp Loop — Jordy Hake (VWolfdog) · CC BY 3.0'));
     const user = h.main.append(new Element('span', { 'data-user-text': '' }, 'Sound on'));
     const price = h.main.append(new Element('span', {}, '1,234'));
     const profit = h.main.append(new Element('span', {}, '−75'));
@@ -508,6 +512,11 @@ test('crate source stories, valuation copy and reveal controls switch in place i
       });
       assert.equal(sound.getAttribute('aria-label'), h.locale.translate('Sound off'));
       assert.equal(sound.getAttribute('title'), h.locale.translate('Sound off'));
+      assert.equal(music.getAttribute('aria-label'), h.locale.translate('Background music'));
+      assert.equal(music.getAttribute('title'), h.locale.translate('Click to enable audio'));
+      assert.equal(music.textContent, h.locale.translate('Music paused'));
+      assert.equal(musicCredit.textContent, 'Soft Mysterious Harp Loop — Jordy Hake (VWolfdog) · CC BY 3.0');
+      assert.equal(musicCredit.getAttribute('href'), 'https://opengameart.org/content/soft-mysterious-harp-loop');
       assert.equal(user.textContent, 'Sound on');
       assert.equal(price.textContent, '1,234');
       assert.equal(profit.textContent, '−75');

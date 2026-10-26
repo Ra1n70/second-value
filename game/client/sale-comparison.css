@@ -1,0 +1,38 @@
+/* Two independent previews; selection and settlement stay with the existing controls. */
+.sale-comparison{margin:20px 0 22px;min-width:0;color:#e9dfc6}
+.sale-comparison-heading{display:flex;justify-content:space-between;align-items:baseline;gap:20px;margin-bottom:12px}
+.sale-comparison .sale-comparison-heading h3{margin:0;font:500 24px/1.3 var(--serif,Georgia,serif);color:#f0e2c1}
+.sale-comparison-paid{display:flex;align-items:baseline;gap:11px;font-size:14px;line-height:1.5;color:#bac2af}
+.sale-comparison-paid strong{color:#e2c07b;font-size:19px;line-height:1.3;font-weight:600;font-variant-numeric:tabular-nums}
+.sale-comparison-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px;align-items:stretch}
+.sale-comparison.has-single .sale-comparison-grid{grid-template-columns:1fr}
+.sale-comparison-card{min-width:0;border:1px solid #ac9670;border-radius:4px;background:#e9dcbc;color:#493b29;padding:15px 16px}
+.sale-comparison-card.is-selected{border-color:#d9b46c;box-shadow:inset 0 0 0 2px #b08c4a77;background:#f1e2bf}
+.sale-comparison-card>header{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:30px;margin-bottom:12px}
+.sale-comparison .sale-comparison-card h4{margin:0;font:600 18px/1.4 var(--sans,Arial,sans-serif);color:#463824}
+.sale-comparison-selected{display:inline-block;border:1px solid #6c7d52;border-radius:3px;padding:3px 6px;color:#385037;background:#d3d5b4;font-size:14px;line-height:1.35}
+.sale-comparison-values{margin:0;display:grid;gap:9px;font-size:14px;line-height:1.5}
+.sale-comparison-values>div{display:flex;justify-content:space-between;align-items:baseline;gap:14px}
+.sale-comparison-values dt{color:#6c593d;min-width:0;overflow-wrap:anywhere}
+.sale-comparison-values dd{margin:0;flex-shrink:0;font-size:17px;line-height:1.4;font-weight:600;color:#463a27;font-variant-numeric:tabular-nums}
+.sale-comparison-values .sale-comparison-recovery{border-top:1px solid #ae96674d;padding-top:9px;margin-top:1px}
+.sale-comparison-values .sale-comparison-recovery dd{font-size:23px;color:#3d5539}
+.sale-comparison-values .sale-comparison-profit{border-top:1px dashed #a58c625e;padding-top:10px;margin-top:1px}
+.sale-comparison-values .sale-comparison-profit dd{font-size:26px;line-height:1.25}
+.sale-comparison-values .is-gain dd{color:#3d6842}.sale-comparison-values .is-loss dd{color:#a04432}
+.sale-comparison .sale-comparison-pending{padding:12px 0 4px}
+.sale-comparison .sale-comparison-pending p{margin:0;color:#745f42;font-size:15px;line-height:1.6}
+.sale-comparison .sale-comparison-pending .sale-comparison-error{margin-top:10px;color:#93442e;font-size:14px;overflow-wrap:anywhere}
+.sale-comparison-difference{display:flex;justify-content:space-between;align-items:baseline;gap:16px;margin-top:10px;padding:9px 12px;border:1px solid #8a9c6b44;border-radius:3px;background:#253b2c;color:#cdd1ba;font-size:14px;line-height:1.5}
+.sale-comparison-difference strong{flex-shrink:0;font-size:20px;line-height:1.4;font-weight:600;font-variant-numeric:tabular-nums;color:#d8ca9b}
+.sale-comparison-difference.is-gain strong{color:#b4d4a7}.sale-comparison-difference.is-loss strong{color:#efb19d}
+.sale-comparison .sale-comparison-explanation,.sale-comparison .sale-comparison-role-note{margin:10px 0 0;color:#b6c0ac;font-size:14px;line-height:1.65}
+@media(max-width:1050px){.sale-comparison-card{padding:13px}.sale-comparison-card>header{flex-wrap:wrap;align-content:start;gap:6px}.sale-comparison-values>div{gap:9px}}
+@media(max-width:620px){.sale-comparison-heading{gap:10px;align-items:flex-start;flex-wrap:wrap}.sale-comparison .sale-comparison-heading h3{font-size:22px}.sale-comparison-grid{grid-template-columns:1fr;gap:11px}.sale-comparison-card>header{flex-wrap:nowrap}.sale-comparison-values .sale-comparison-profit dd{font-size:25px}}
+.sale-disposal{align-items:start}
+.sale-disposal .sale-selected-summary{margin:18px 0 22px}
+.sale-disposal .sale-selected-summary>span{font-size:14px;color:#76603f}
+.sale-disposal .sale-selected-summary>h3{font-size:22px;margin:4px 0 15px}
+.sale-disposal .latest-receipt{margin-top:17px;padding-top:12px;border-top:1px solid #9d7e5255}
+.sale-disposal .latest-receipt>summary{color:#6c502b;font-size:14px;cursor:pointer}
+@media(min-width:851px){body.tabletop-mode .sale-disposal>aside{position:sticky;top:18px}}

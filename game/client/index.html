@@ -16,7 +16,10 @@
   <link rel="stylesheet" href="language-switcher.css">
   <link rel="stylesheet" href="roles.css">
   <link rel="stylesheet" href="auction-show.css">
+  <link rel="stylesheet" href="audio-controls.css">
   <link rel="stylesheet" href="notebook.css">
+  <link rel="stylesheet" href="round-clues.css">
+  <link rel="stylesheet" href="sale-comparison.css">
   <link rel="stylesheet" href="tutorial.css">
   <script defer src="engine.js"></script>
   <script defer src="locale-es.js"></script>
@@ -24,13 +27,15 @@
   <script defer src="art.js"></script>
   <script defer src="auction-show.js"></script>
   <script defer src="notebook.js"></script>
+  <script defer src="round-clues.js"></script>
+  <script defer src="sale-comparison.js"></script>
   <script defer src="tutorial.js"></script>
   <script defer src="app.js"></script>
   <script defer src="language-switcher.js"></script>
 </head>
 <body>
   <div class="app-shell">
-    <header class="site-header"><a class="wordmark" href="./" aria-label="Second Value home"><span class="brand-mark" aria-hidden="true">SV</span><span><span class="eyebrow">THE OLD HARBOR AUCTION HOUSE</span><span class="brand-title">Second Value</span></span></a><div class="header-tools"><div class="header-meta"><span class="live-dot" aria-hidden="true"></span> LOCAL PRACTICE <span class="version">DEMO 0.10</span></div><label class="language-picker" data-no-localize><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 6.5h14M5 17.5h14"/></svg><select id="game-language-select" aria-label="Language / 语言 / Idioma"><option value="en" lang="en">English</option><option value="zh-CN" lang="zh-CN">中文</option><option value="es" lang="es">Español</option></select></label><button type="button" class="text-button sound-toggle" id="auction-sound" aria-pressed="false">Sound off</button><button type="button" id="help-button" class="text-button">How to play</button></div></header>
+    <header class="site-header"><a class="wordmark" href="./" aria-label="Second Value home"><span class="brand-mark" aria-hidden="true">SV</span><span><span class="eyebrow">THE OLD HARBOR AUCTION HOUSE</span><span class="brand-title">Second Value</span></span></a><div class="header-tools"><div class="header-meta"><span class="live-dot" aria-hidden="true"></span> LOCAL PRACTICE <span class="version">DEMO 0.10</span></div><label class="language-picker" data-no-localize><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 6.5h14M5 17.5h14"/></svg><select id="game-language-select" aria-label="Language / 语言 / Idioma"><option value="en" lang="en">English</option><option value="zh-CN" lang="zh-CN">中文</option><option value="es" lang="es">Español</option></select></label><div class="header-audio-controls"><button type="button" class="text-button sound-toggle" id="auction-sound" aria-pressed="false">Sound off</button><button type="button" class="text-button music-toggle" id="auction-music" aria-label="Background music" aria-pressed="false">Music off</button></div><button type="button" id="help-button" class="text-button">How to play</button></div></header>
     <div class="demo-strip"><span>STEP 10</span> Your clues. Your judgment. Your next move.</div>
     <main id="game" aria-live="off"></main>
     <footer class="site-footer"><span>Different eyes. Different value.</span><a href="online.html" id="multiplayer-link">Create or join a multiplayer room →</a></footer>
@@ -39,6 +44,7 @@
     <div class="dialog-heading"><span class="eyebrow">THE RULES</span><button type="button" id="close-help" class="text-button">Close</button></div>
     <h2>Buy with a reason.<br>Know when to walk away.</h2>
     <p><button type="button" class="primary" data-open-tutorial>Learn in one crate</button></p>
+    <p class="audio-credit"><span>Background music:</span> <a href="https://opengameart.org/content/soft-mysterious-harp-loop" target="_blank" rel="noopener noreferrer" data-no-localize>Soft Mysterious Harp Loop</a><span data-no-localize> — Jordy Hake (VWolfdog) · </span><a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener noreferrer" data-no-localize>CC BY 3.0</a>. <span>Edited for volume and looping.</span></p>
     <ol>
       <li>Everyone starts a new session with 1,000 virtual coins once. Cash, profits and losses carry between auctions for every player.</li>
       <li>Each crate contains six objects. Everyone shares ordinary sale prices, fixed before bidding.</li>

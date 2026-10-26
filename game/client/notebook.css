@@ -68,6 +68,31 @@ dialog.private-notebook{width:min(940px,calc(100% - 36px));max-width:940px;max-h
 .notebook-round-comparison table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.5;color:#4e3b26}
 .notebook-round-comparison th,.notebook-round-comparison td{padding:7px 9px;text-align:left;border-bottom:1px solid #ad96704d}
 .notebook-round-comparison td{font-variant-numeric:tabular-nums}
+/* The bid review reads notes and confirmed clues without changing either. */
+dialog.action-review:has(.bid-crosscheck){max-height:calc(100dvh - 32px);overflow-y:auto}
+.action-review .bid-crosscheck{margin:15px 0;padding:12px 14px;border:1px solid #b19a7066;border-radius:4px;background:#fff5df80;color:#4e3b26;font:16px/1.5 var(--sans,Arial,sans-serif)}
+.action-review .bid-crosscheck h3{margin:0 0 9px;color:#4e3b26;font:600 16px/1.4 var(--sans,Arial,sans-serif)}
+.action-review .bid-crosscheck p{margin:5px 0;color:#715d40;font-size:14px;line-height:1.5}
+.bid-crosscheck-record{display:flex;justify-content:space-between;gap:9px 20px;flex-wrap:wrap;margin:0}
+.bid-crosscheck-record>div{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.bid-crosscheck-record dt{font-size:14px;color:#705a3b}.bid-crosscheck-record dd{margin:0;color:#3e5038;font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}
+.action-review .bid-crosscheck .bid-crosscheck-empty{margin:0;font-size:14px;font-weight:400;color:#715d40}
+.bid-crosscheck-warning{margin-top:9px;padding:8px 10px;border-left:3px solid #9d6d32;background:#e6c68a59}
+.action-review .bid-crosscheck-warning p{color:#785122;margin:0 0 3px}.bid-crosscheck-warning strong{font-weight:700;font-variant-numeric:tabular-nums}
+.action-review .bid-crosscheck .bid-crosscheck-optional{margin-top:8px;color:#806d50}
+.bid-crosscheck-facts{margin-top:9px;border-top:1px solid #ad967055;padding-top:8px;font-size:14px}
+.bid-crosscheck-facts summary{cursor:pointer;color:#645137;font-size:14px;font-weight:600}
+.bid-crosscheck-source-name{display:block;margin-top:4px;color:#715d40;font-size:14px;font-weight:400}
+.bid-crosscheck-facts summary:focus-visible{outline:2px solid #80633c;outline-offset:3px}
+.bid-crosscheck-counts{display:flex;gap:4px 16px;flex-wrap:wrap;margin-top:5px;font-weight:400}.bid-crosscheck-counts>span{display:flex;gap:8px;color:#715d40}.bid-crosscheck-counts strong{font-variant-numeric:tabular-nums;color:#4b563c}
+.bid-crosscheck-source{margin-top:7px}.bid-crosscheck-source>strong{font-size:14px;font-weight:600;color:#655137}
+.action-review .bid-crosscheck-source .bid-crosscheck-probability{font-size:14px;color:#806d50}
+.bid-crosscheck-objects{list-style:none;margin:7px 0 0;padding:0;display:grid;gap:5px}
+.bid-crosscheck-objects li{display:flex;justify-content:space-between;align-items:baseline;gap:6px 12px;border-top:1px solid #ad967033;padding-top:5px;min-width:0}
+.bid-crosscheck-objects li>div{min-width:0;overflow-wrap:anywhere}.bid-crosscheck-slot{display:inline-block;margin-right:6px;color:#80633c;font-weight:600}
+.bid-crosscheck-objects small{display:block;color:#806d50;font-size:14px}
+.bid-crosscheck-base{flex-shrink:0;display:flex;gap:6px;color:#715d40;font-size:14px}.bid-crosscheck-base strong{color:#4b563c;font-variant-numeric:tabular-nums}
+@media(max-width:520px){.action-review .bid-crosscheck{padding:11px}.bid-crosscheck-record{display:grid;gap:7px}.bid-crosscheck-objects li{flex-wrap:wrap}.bid-crosscheck-base{margin-left:18px}}
 @media(max-width:760px){.notebook-round-form{grid-template-columns:repeat(2,minmax(0,1fr))}.notebook-round-reason{grid-column:1/-1}}
 @media(max-width:440px){.notebook-round-form{grid-template-columns:1fr}.notebook-round-reason{grid-column:auto}.private-notebook .notebook-decisions{padding:11px}.notebook-decision-heading p{min-width:0}}
 @media(min-width:681px) and (max-width:980px){.notebook-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}

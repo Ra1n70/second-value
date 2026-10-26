@@ -63,6 +63,15 @@
     catch { return {notes:normalizeNotes(null),available:true}; }
   }
   function loadNotes(storage, key) { return readNotes(storage,key).notes; }
+  function readRoundDecision({key,storage,round} = {}) {
+    if (!storageKey(key) || !Number.isInteger(round) || round < 1 || round > 3) return {ceiling:null,stance:'',invalid:false};
+    // A blocked browser can still have a live draft. Never borrow a different
+    // seat, crate, storage surface or round to fill a missing current record.
+    const notes = current?.key === key && current.storage === storage ? current.notes : loadNotes(storage,key);
+    const entry = notes?.rounds?.[round], ceiling = parseEstimate(entry?.ceiling);
+    const text = typeof entry?.ceiling === 'string' || typeof entry?.ceiling === 'number' ? String(entry.ceiling).trim() : '';
+    return {ceiling,stance:PLANS.includes(entry?.stance) ? entry.stance : '',invalid:text !== '' && ceiling === null};
+  }
   function normalizeLots(lots) {
     if (!Array.isArray(lots)) return [];
     const seen = new Set();
@@ -96,6 +105,28 @@
       if (safe.condition) lines.push(`<div><dt>Condition</dt><dd>${CONDITIONS[safe.condition]}</dd></div>`);
     } else if (safe.range) lines.push(`<div><dt>Catalog range</dt><dd>${money(safe.range.min)}–${money(safe.range.max)}</dd></div>`);
     return `<span class="notebook-confirmed-heading">Confirmed information</span><span class="notebook-source ${safe.source === 'Private note' ? 'is-private' : ''}">${escape(safe.source)}</span>${safe.known ? '' : '<p class="notebook-unknown">No confirmed identity yet.</p>'}${lines.length ? `<dl>${lines.join('')}</dl>` : ''}`;
+  }
+  function reviewMarkup(options = {}) {
+    const round = options.round;
+    if (!Number.isInteger(round) || round < 1 || round > 3) return '';
+    const note = readRoundDecision(options), bidding = options.pass !== true && whole(options.amount);
+    const above = bidding && note.ceiling !== null && options.amount > note.ceiling;
+    const watching = bidding && note.stance === 'watch', warnings = [];
+    if (above) warnings.push(`<p><span>Above your recorded maximum by</span> <strong data-no-localize>+${money(options.amount-note.ceiling)}</strong></p>`);
+    if (watching) warnings.push('<p>You recorded a plan to watch this round.</p>');
+    const record = note.ceiling === null ? `<div><dt>Your recorded maximum</dt><dd class="bid-crosscheck-empty">${note.invalid ? 'Your recorded maximum is invalid.' : 'No maximum recorded this round.'}</dd></div>` : `<div><dt>Your recorded maximum</dt><dd data-no-localize>${money(note.ceiling)}</dd></div>`;
+    const plan = note.stance ? `<div><dt>My plan</dt><dd>${PLAN_LABELS[note.stance]}</dd></div>` : '';
+    const clues = options.clues && typeof options.clues === 'object' ? options.clues : {};
+    const validCount = count => Number.isInteger(count) && count >= 0 && count <= 6;
+    const counts = [];
+    if (round >= 2 && validCount(clues.genuineCount)) counts.push(`<span><span>Genuine objects</span> <strong data-no-localize>${clues.genuineCount} / 6</strong></span>`);
+    if (round === 3 && validCount(clues.repairableCount)) counts.push(`<span><span>Repairable objects</span> <strong data-no-localize>${clues.repairableCount} / 6</strong></span>`);
+    const sourceName = typeof clues.sourceName === 'string' ? clues.sourceName.slice(0,160) : '';
+    const sourceHint = typeof clues.sourceHint === 'string' ? clues.sourceHint.slice(0,500) : '';
+    const source = sourceName || sourceHint ? `<div class="bid-crosscheck-source">${sourceHint ? `<p>${escape(sourceHint)}</p>` : ''}<p class="bid-crosscheck-probability">Source clues describe possibilities, not guaranteed contents.</p></div>` : '';
+    const known = normalizeLots(options.lots).filter(lot=>lot.known);
+    const objects = known.length ? `<ul class="bid-crosscheck-objects">${known.map(lot=>`<li><div><span class="bid-crosscheck-slot" data-no-localize>${String.fromCharCode(65+lot.slot)}</span><span>${escape(lot.label)}</span><small>${escape(lot.source)}</small></div>${whole(lot.base) ? `<span class="bid-crosscheck-base"><span>Base price</span> <strong data-no-localize>${money(lot.base)}</strong></span>` : ''}</li>`).join('')}</ul>` : '<p class="bid-crosscheck-unknown">No object identities confirmed yet.</p>';
+    return `<section class="bid-crosscheck" aria-label="Check your bid"><h3>Check your bid</h3><dl class="bid-crosscheck-record">${record}${plan}</dl>${warnings.length ? `<div class="bid-crosscheck-warning" role="status">${warnings.join('')}<p>You can still confirm this bid, or return to edit.</p></div>` : ''}<p class="bid-crosscheck-optional">Your notes do not set or limit your bid.</p><details class="bid-crosscheck-facts"><summary><span>Clues available this round</span>${sourceName ? `<span class="bid-crosscheck-source-name">${escape(sourceName)}</span>` : ''}${counts.length ? `<span class="bid-crosscheck-counts">${counts.join('')}</span>` : ''}</summary>${source}${objects}</details></section>`;
   }
   function buttonMarkup() { return '<button type="button" class="private-notes-button" data-open-notebook aria-haspopup="dialog"><span class="private-notes-icon" aria-hidden="true">▤</span><span>Private notes</span></button>'; }
   function scopeCopy(scope) { return scope === 'tab' ? 'Only you can see these notes. Saved in this tab for this crate.' : 'Only you can see these notes. Saved on this device for this crate.'; }
@@ -278,5 +309,5 @@
     });
   }
   root.addEventListener?.('secondvalue:languagechange',() => { if (current) localize(current.dialog); });
-  return Object.freeze({buttonMarkup,bind,parseEstimate,storageKey,normalizeNotes,normalizeRoundNotes,normalizeReason,normalizeDecision,normalizeLots,loadNotes,estimateSummary,factsMarkup,comparisonMarkup});
+  return Object.freeze({buttonMarkup,bind,parseEstimate,storageKey,normalizeNotes,normalizeRoundNotes,normalizeReason,normalizeDecision,normalizeLots,loadNotes,readRoundDecision,estimateSummary,factsMarkup,comparisonMarkup,reviewMarkup});
 });
