@@ -12,13 +12,6 @@ function publicRandom(view, purpose) {
   for (let index = 0; index < text.length; index++) seed = Math.imul(seed ^ text.charCodeAt(index), 16777619);
   return E.rng(seed >>> 0);
 }
-function sourceWeight(source, item) {
-  // Public source probabilities are part of the catalog, not crate truth.
-  if (source === 'workshop') return (item.category === 'mechanical' ? 1.6 : 1) * (item.genuine && item.condition === 'damaged' ? 4 : 1);
-  if (source === 'estate') return item.genuine ? item.condition === 'intact' ? item.theme ? 3.8 : 2.5 : item.theme ? 1.5 : 1 : .55;
-  if (source === 'theater') return item.genuine ? 1 : 4;
-  return 1;
-}
 function repairable(item) { return Boolean(item.genuine && item.condition === 'damaged' && item.repair); }
 function estimate(view) {
   const catalog = E.catalogItems(view.rulesVersion), count = view.lots.length;
@@ -28,8 +21,9 @@ function estimate(view) {
   const genuine = Number.isInteger(view.public?.genuineCount) ? view.public.genuineCount : null;
   const repairs = Number.isInteger(view.public?.repairableCount) ? view.public.repairableCount : null;
   const weighted = view.rulesVersion >= 5 && own(E.SOURCES, view.sourceId);
-  const totalWeight = catalog.reduce((sum, item) => sum + sourceWeight(weighted ? view.sourceId : null, item), 0);
-  // At most 4^6 appearance assignments fit this catalog. Their source and public
+  const weightFor = item => E.catalogWeight(weighted ? view.sourceId : null, item, view.rulesVersion);
+  const totalWeight = catalog.reduce((sum, item) => sum + weightFor(item), 0);
+  // Catalog appearance assignments retain their source, rarity and public
   // reserve likelihoods can be enumerated cheaply; role processing stays capped
   // at 96 calls through stratified weighted samples ordered by ordinary value.
   // Larger hypothesis sets remain approximate valuations, not an oracle.
@@ -57,7 +51,7 @@ function estimate(view) {
     }
     for (const item of candidates[index]) {
       if (used.has(item.catalogId)) continue;
-      const weight = sourceWeight(weighted ? view.sourceId : null, item);
+      const weight = weightFor(item);
       used.add(item.catalogId); crate.push(item);
       visit(index + 1, weighted ? probability * weight / (totalWeight - usedWeight) : probability, usedWeight + weight, genuineSoFar + Number(item.genuine), repairsSoFar + Number(repairable(item)));
       crate.pop(); used.delete(item.catalogId);

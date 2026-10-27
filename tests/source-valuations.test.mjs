@@ -24,7 +24,7 @@ function ordinaryReceipt(items, paid) {
 }
 
 test('source draws are deterministic, distinct, and independent of roles, wealth and computer work', async () => {
-  assert.equal(E.RULES_VERSION, 5);
+  assert.equal(E.RULES_VERSION, 6);
   assert.deepEqual(Object.keys(E.SOURCES), ['workshop', 'estate', 'theater']);
   for (const record of Object.values(E.SOURCES)) assert.deepEqual(Object.keys(record), ['name', 'evidence', 'hint', 'story']);
   for (let seed = 0; seed < 48; seed++) {

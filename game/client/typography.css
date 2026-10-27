@@ -3,6 +3,13 @@
   --serif:'Noto Serif SC','Songti SC',Georgia,serif;
   --sans:'Noto Sans SC','Microsoft YaHei UI','Microsoft YaHei',sans-serif;
 }
+/* CJK faces draw curly quotes and ellipses full-width ("Navigator’ s"); English and Spanish take them from a Latin system face. */
+@font-face{font-family:'SV Latin Punctuation Serif';src:local('Georgia'),local('Times New Roman'),local('Noto Serif'),local('DejaVu Serif'),local('Liberation Serif');unicode-range:U+2018-201F,U+2026}
+@font-face{font-family:'SV Latin Punctuation Sans';src:local('Segoe UI'),local('Helvetica Neue'),local('Arial'),local('Roboto'),local('Noto Sans'),local('DejaVu Sans');unicode-range:U+2018-201F,U+2026}
+html:not([lang^=zh]){
+  --serif:'SV Latin Punctuation Serif','Noto Serif SC','Songti SC',Georgia,serif;
+  --sans:'SV Latin Punctuation Sans','Noto Sans SC','Microsoft YaHei UI','Microsoft YaHei',sans-serif;
+}
 body{font-kerning:normal}
 h1,h2,h3,.brand-title{font-weight:600}
 .brand-title{letter-spacing:.06em}

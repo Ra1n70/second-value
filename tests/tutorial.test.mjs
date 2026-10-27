@@ -6,6 +6,9 @@ import {runInNewContext} from 'node:vm';
 
 const require=createRequire(import.meta.url), E=require('../game/engine.cjs');
 const source=await readFile(new URL('../game/client/tutorial.js',import.meta.url),'utf8');
+const artModule={exports:{}};
+runInNewContext(await readFile(new URL('../game/client/art.js',import.meta.url),'utf8'),{module:artModule});
+const Art=artModule.exports;
 function setup(options={}) {
   const events={},dialogEvents={},writes=[],reads=[],nodes=[],liveGame={cash:812,phase:'bid',draft:630};
   let bodyAppends=0,closeHelp=0,networkCalls=0,localized=0;
@@ -22,6 +25,7 @@ function setup(options={}) {
     addEventListener(name,callback){(events[name] ||= []).push(callback);},
     localStorage:{getItem(key){reads.push(key);if(options.blockStorage)throw new Error('blocked');return '{malformed progress';},setItem(key,value){if(options.blockStorage)throw new Error('blocked');writes.push([key,value]);}},
     fetch(){networkCalls++;throw new Error('No network is allowed for tutorial.');}};
+  if(options.art)context.SecondValueArt=options.art;
   runInNewContext(source,context);
   function target(attributes={}) {
     return {dataset:attributes,closest(selector){if(selector==='[data-open-tutorial]')return attributes.open?this:null;if(selector==='[data-tutorial-select]')return 'tutorialSelect' in attributes?this:null;if(selector==='[data-tutorial-mode]')return 'tutorialMode' in attributes?this:null;if(selector==='[data-tutorial-action]')return 'tutorialAction' in attributes?this:null;return null;}};
@@ -127,4 +131,36 @@ test('blocked storage and malformed saved progress cannot affect the lesson, and
   assert.doesNotThrow(()=>runtime.click('finish'));assert.equal(runtime.dialog.open,false);
   runtime.open();assert.match(runtime.dialog.innerHTML,/Choose an object and read the public clue/);
   assert.deepEqual(runtime.reads,[]);assert.deepEqual(runtime.writes,[]);assert.equal(runtime.networkCalls,0);
+});
+
+test('real art metadata renders nested WebP assets through public clues, reveal and repair lesson',()=>{
+  const runtime=setup({art:Art});runtime.api.bind(runtime.doc);runtime.open();
+  const items=Array.from(runtime.api.createPractice(E).items);
+  const images=()=>Array.from(runtime.dialog.innerHTML.matchAll(/background-image:url\('([^']+)'\)/g),match=>match[1]);
+  const styles=()=>Array.from(runtime.dialog.innerHTML.matchAll(/class="tutorial-art"[^>]+style="([^"]+)"/g),match=>match[1]);
+  const contained='background-size:contain;background-repeat:no-repeat;background-position:center';
+  const knownPaths=items.map(item=>Art.visualFor(item,true).sheet);
+  for(const path of knownPaths)assert.match(path,/^assets\/catalog-original-v2\/[\w-]+\.webp$/);
+  assert.deepEqual(images(),items.map((item,index)=>Art.visualFor(item,index===3).sheet));
+  assert.equal(images().filter(path=>path==='assets/covered-lots-v1.png').length,5,'only the publicly revealed toy camera uses identity art before hammer');
+  assert.ok(images().includes(knownPaths[3]));
+  for(const [index,item] of items.entries()) {
+    if(index===3)assert.ok(styles()[index].includes(contained),'the single-cell toy camera must fit its wide tutorial box without stretching');
+    else {
+      const visual=Art.visualFor(item,false),x=100*visual.column/(visual.columns-1),y=100*visual.row/(visual.rows-1);
+      assert.ok(styles()[index].includes(`background-size:${visual.columns*100}% ${visual.rows*100}%;background-position:${x}% ${y}%`),'covered atlas cells keep their original size and grid position');
+      assert.ok(!styles()[index].includes('contain'));
+    }
+  }
+  assert.doesNotMatch(runtime.dialog.innerHTML,/tutorial-art-fallback|catalog-lots-v1\.png/);
+  for(const path of knownPaths.filter((_,index)=>index!==3))assert.ok(!images().includes(path),'covered objects must not reveal their new identity art');
+  runtime.select(0);runtime.click('next');runtime.draft('350');runtime.review();runtime.click('confirm');
+  assert.deepEqual(images(),knownPaths,'all six actual identity paths survive the tutorial asset allowlist after hammer');
+  assert.doesNotMatch(runtime.dialog.innerHTML,/tutorial-art-fallback/);
+  assert.equal(styles().filter(style=>style.includes(contained)).length,6,'every revealed standalone image preserves aspect ratio in the 70-by-57 lesson boxes');
+  runtime.click('compare');
+  assert.deepEqual(images(),[knownPaths[0]],'the repair explanation keeps the same standalone harbor-clock WebP');
+  assert.ok(styles()[0].includes(contained));
+  assert.doesNotMatch(runtime.dialog.innerHTML,/tutorial-art-fallback/);
+  assert.equal(runtime.networkCalls,0);
 });

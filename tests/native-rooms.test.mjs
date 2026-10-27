@@ -242,7 +242,7 @@ test('new role choices and fees survive a simultaneous D1 sale replay without le
     await api.command(host, {type: 'bid', amount: (await api.view(host)).reservePrice, pass: false});
     await api.command(guest, {type: 'bid', amount: null, pass: true});
     const opened = await api.view(host);
-    assert.equal(opened.rulesVersion, 5);
+    assert.equal(opened.rulesVersion, 6);
     const remainingCash = 1000 - opened.winningBid;
     const expected = E.salePlan(role, opened.lots, 'special', remainingCash, {abilityIds: slots.map(slot => opened.lots[slot].id)});
     const saleCommand = {type: 'sell', turnId: opened.turnId, mode: 'special', repairSlots: [], pairSlots: [], abilitySlots: slots};

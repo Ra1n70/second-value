@@ -5,7 +5,7 @@ import {runInNewContext} from 'node:vm';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url),E=require('../game/engine.cjs');
 const app=await readFile(new URL('../game/client/app.js',import.meta.url),'utf8');
-const online=await readFile(new URL('../game/client/online.js',import.meta.url),'utf8');
+const online=(await readFile(new URL('../game/client/online.js',import.meta.url),'utf8')).replace(/\r\n?/g,'\n');
 const plain=value=>JSON.parse(JSON.stringify(value));
 const appBind=app.match(/  function bindNotebook\(\) \{[\s\S]*?\n  \}/)?.[0];
 const roomBind=online.match(/    let settlement=null;\n    if\(view&&\['result','ended'\][\s\S]*?    Notes\.bind\(main,[^\n]+\);/)?.[0];

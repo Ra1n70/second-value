@@ -7,7 +7,7 @@
   const STARTING_CASH = 1000;
   const CRATE_SIZE = 6;
   const MAX_SESSION_ACTIONS = 10000;
-  const RULES_VERSION = 5;
+  const RULES_VERSION = 6;
   const THEMES = {harbor:'Old Harbor', railway:'Railway'};
   const SOURCES = {
     workshop: {name:"Watchmaker's clearance",evidence:'A faded repair tag',hint:'Mechanical objects and genuine damaged pieces are more likely.',story:'A shuttered watchmaker leaves behind unfinished repairs and forgotten keepsakes.'},
@@ -45,7 +45,7 @@
   // Balance revisions are locked at session creation. Old replays retain their
   // original catalog themes and committed computer quotes, including future crates.
   const REVISION_TWO_ITEMS = ORIGINAL_ITEMS.map(item=>item.catalogId==='tea-cup'?{...item,theme:'railway'}:item);
-  const ITEMS = [...REVISION_TWO_ITEMS,
+  const REVISION_THREE_ITEMS = [...REVISION_TWO_ITEMS,
     {id:'cabinet-clock',name:'Railway cabinet clock',shape:'clock',category:'mechanical',theme:'railway',base:220,genuine:true,condition:'intact'},
     {id:'cracked-cup',name:'Cracked porcelain cup',shape:'cup',category:'ceramic',theme:null,base:150,genuine:true,condition:'damaged',repair:{cost:50,sale:235}},
     {id:'navy-badge',name:'Naval service badge',shape:'badge',category:'insignia',theme:'harbor',base:70,genuine:true,condition:'intact'},
@@ -53,11 +53,23 @@
     {id:'console-radio',name:'Console receiver',shape:'radio',category:'instrument',theme:null,base:300,genuine:true,condition:'intact'},
     {id:'railway-map',name:'Original railway map',shape:'map',category:'document',theme:'railway',base:240,genuine:true,condition:'intact'}
   ].map(item=>({...item,catalogId:item.catalogId??item.id,appearance:item.shape,authenticity:item.genuine?'genuine':'reproduction',baseValue:item.base,harbor:item.theme==='harbor'}));
-  function validateRules(version) {if(![1,2,3,4,5].includes(version))throw new Error('Choose a valid rules revision.');return version;}
+  const RARE_ITEMS = [
+    {id:'midnight-regulator',name:'Midnight Regulator',shape:'clock',category:'mechanical',theme:'railway',base:240,genuine:true,condition:'damaged',repair:{cost:80,sale:380},story:'A railway mechanic left this clock at the watchmaker’s. Its pendulum stopped at midnight, and an unsigned work order still rests behind the back panel.',provenance:'A faded railway repair order'},
+    {id:'tide-wireless',name:'Tidewatch Wireless',shape:'radio',category:'instrument',theme:'harbor',base:160,genuine:true,condition:'damaged',repair:{cost:60,sale:255},story:'This radio came in for repair when the old harbor watch room closed. Salt marks remain beside the knobs. The logbook’s last entry reads: “Waiting for the tide.”',provenance:'A salt-stained repair tag'},
+    {id:'blue-line-cup',name:'Blue Line Service Cup',shape:'cup',category:'ceramic',theme:'railway',base:150,genuine:true,condition:'intact',story:'The collector kept just one cup from the service. A thin cobalt line circles its rim like a railway route that no longer runs.',provenance:'A dining-car entry in an estate catalog'},
+    {id:'canceled-voyage-medal',name:'Unsailed Voyage Medal',shape:'badge',category:'insignia',theme:'harbor',base:110,genuine:true,condition:'intact',story:'This medal was struck for a maiden voyage that was canceled. The ship never left the harbor, but someone kept its dark blue ribbon for years.',provenance:'A record of a canceled maiden voyage'},
+    {id:'last-service-camera',name:'Last Service Camera',shape:'camera',category:'imaging',theme:'railway',base:280,genuine:true,condition:'intact',story:'A railway luggage tag hangs from its old leather case. The lens is clear and the film holder is empty. The photographs of that last service did not come with it.',provenance:'A leather case with a railway luggage tag'},
+    {id:'night-pilot-chart',name:'Night Pilot Chart',shape:'map',category:'document',theme:'harbor',base:210,genuine:true,condition:'intact',story:'A red pencil route avoids the chart’s shortest channel. The collector called it “the cautious course” but never named the harbor pilot who drew it.',provenance:'A collected chart with a red pencil route'},
+    {id:'gilded-prop-clock',name:'Coronation Prop Clock',shape:'clock',category:'mechanical',theme:null,base:55,genuine:false,condition:'unrepairable',story:'Its gilded shell once caught the stage lights. Behind the back panel, wire holds the hands in place. This clock was never meant to keep time.',provenance:'A painted ornament from the theater storeroom'},
+    {id:'silver-stage-chart',name:'Silver Ink Stage Chart',shape:'map',category:'document',theme:'harbor',base:25,genuine:false,condition:'intact',story:'Silver routes shine under the lights but lead to a coast that does not exist. The scene painter used canvas so even the back row could read the chart.',provenance:'A prop list on the back of an old theater ticket'}
+  ].map(item=>({...item,catalogId:item.id,appearance:item.shape,authenticity:item.genuine?'genuine':'reproduction',baseValue:item.base,harbor:item.theme==='harbor',rarity:'rare'}));
+  const RARE_IDS = new Set(RARE_ITEMS.map(item=>item.catalogId));
+  const ITEMS = [...REVISION_THREE_ITEMS,...RARE_ITEMS];
+  function validateRules(version) {if(![1,2,3,4,5,6].includes(version))throw new Error('Choose a valid rules revision.');return version;}
   function savedRules(raw) {return Object.hasOwn(raw,'rulesVersion')?validateRules(raw.rulesVersion):1;}
   function catalogItems(gameOrVersion) {
     const version=gameOrVersion===undefined?RULES_VERSION:typeof gameOrVersion==='number'?gameOrVersion:gameOrVersion.rulesVersion??1;
-    return validateRules(version)===1?ORIGINAL_ITEMS:version===2?REVISION_TWO_ITEMS:ITEMS;
+    return validateRules(version)===1?ORIGINAL_ITEMS:version===2?REVISION_TWO_ITEMS:version<6?REVISION_THREE_ITEMS:ITEMS;
   }
   const SHAPES = {clock:'Clock-shaped object',cup:'Small ceramic object',badge:'Metal insignia',camera:'Camera-shaped object',radio:'Radio-shaped object',map:'Folded paper document'};
   function rng(seed) {let a=seed>>>0;return function(){a+=0x6D2B79F5;let t=Math.imul(a^(a>>>15),1|a);t^=t+Math.imul(t^(t>>>7),61|t);return ((t^(t>>>14))>>>0)/4294967296;};}
@@ -67,12 +79,18 @@
     if(sourceId==='theater')return item.genuine?1:4;
     return 1;
   }
-  function sourceDraw(pool,sourceId,random) {
+  function catalogWeight(sourceId,item,rulesVersion=RULES_VERSION) {
+    // This prior is shared by real draws and both computer estimators. Known
+    // room projections need only catalogId; they do not carry rarity metadata.
+    if(rulesVersion<5)return 1;
+    return sourceWeight(sourceId,item)*(rulesVersion>=6&&RARE_IDS.has(item.catalogId) ? .15 : 1);
+  }
+  function sourceDraw(pool,sourceId,random,rulesVersion) {
     const remaining=[...pool],items=[];
     while(items.length<CRATE_SIZE) {
-      let target=random()*remaining.reduce((sum,item)=>sum+sourceWeight(sourceId,item),0),chosen=remaining.length-1;
+      let target=random()*remaining.reduce((sum,item)=>sum+catalogWeight(sourceId,item,rulesVersion),0),chosen=remaining.length-1;
       for(let index=0;index<remaining.length;index++) {
-        target-=sourceWeight(sourceId,remaining[index]);
+        target-=catalogWeight(sourceId,remaining[index],rulesVersion);
         if(target<0){chosen=index;break;}
       }
       items.push(remaining.splice(chosen,1)[0]);
@@ -255,7 +273,7 @@
       return candidates.map(candidate=>({...candidate,id:'estimate-'+index}));
     });
     const weighted=(context.rulesVersion??RULES_VERSION)>=5&&Object.hasOwn(SOURCES,context.sourceId);
-    const poolWeight=weighted?catalogItems(context.rulesVersion).reduce((sum,item)=>sum+sourceWeight(context.sourceId,item),0):0;
+    const poolWeight=weighted?catalogItems(context.rulesVersion).reduce((sum,item)=>sum+catalogWeight(context.sourceId,item,context.rulesVersion??RULES_VERSION),0):0;
     let total=0,count=0;
     function visit(crate,index,likelihood=1,usedWeight=0) {
       if(index===possibilities.length) {
@@ -267,7 +285,7 @@
       }
       for(const item of possibilities[index]) {
         if(weighted&&crate.some(selected=>selected.catalogId===item.catalogId))continue;
-        const weight=weighted?sourceWeight(context.sourceId,item):0;
+        const weight=weighted?catalogWeight(context.sourceId,item,context.rulesVersion??RULES_VERSION):0;
         visit([...crate,item],index+1,weighted?likelihood*weight/(poolWeight-usedWeight):1,usedWeight+weight);
       }
     }
@@ -321,7 +339,7 @@
     const sourceId=rulesVersion>=5?Object.keys(SOURCES)[Math.floor(rng(seed^0x39B4D871)()*3)]:null;
     if(rulesVersion<5)for(let i=pool.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
     const prefix=context.instancePrefix??String(seed>>>0);
-    const items=(rulesVersion>=5?sourceDraw(pool,sourceId,random):pool.slice(0,CRATE_SIZE)).map((item,index)=>({...item,id:`${prefix}-${index}-${item.catalogId}`}));
+    const items=(rulesVersion>=5?sourceDraw(pool,sourceId,random,rulesVersion):pool.slice(0,CRATE_SIZE)).map((item,index)=>({...item,id:`${prefix}-${index}-${item.catalogId}`}));
     const priority=['you','bot-0','bot-1','bot-2'],offset=Math.floor(random()*4),order=priority.slice(offset).concat(priority.slice(0,offset));
     const game={version:4,rulesVersion,seed:seed>>>0,role,theme:role==='collector'?theme:null,startingCash,botStartingCash:[...botStartingCash],botThemes:context.botThemes?clone(context.botThemes):null,phase:'inspect',round:1,items,reservePrice:crateReserve(items,seed,rulesVersion),bots:[],priority:order,publicIndex:Math.floor(random()*CRATE_SIZE),selected:0,inspected:[],history:[],actions:[],bid:null,passed:false,winner:null,mode:null,receipt:null};
     if(rulesVersion>=3)game.botRoles=[...botRoles];
@@ -511,5 +529,5 @@
       return session;
     } catch {return null;}
   }
-  return {STARTING_CASH,CRATE_SIZE,MAX_SESSION_ACTIONS,RULES_VERSION,ROLES,THEMES,SOURCES,ITEMS,SHAPES,rng,catalogFor,catalogItems,abilityEligibility,abilitySelectionLimit,inspect,salePlan,valuationBoard,computerBids,newGame,useSkill,openBidding,returnToInspection,resolveRound,placeBid,nextRound,settle,standings,restore,getCash,newSession,performSession,sessionStandings,restoreSession};
+  return {STARTING_CASH,CRATE_SIZE,MAX_SESSION_ACTIONS,RULES_VERSION,ROLES,THEMES,SOURCES,ITEMS,SHAPES,rng,catalogFor,catalogItems,catalogWeight,abilityEligibility,abilitySelectionLimit,inspect,salePlan,valuationBoard,computerBids,newGame,useSkill,openBidding,returnToInspection,resolveRound,placeBid,nextRound,settle,standings,restore,getCash,newSession,performSession,sessionStandings,restoreSession};
 });

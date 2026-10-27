@@ -52,5 +52,6 @@ next-env.d.ts
 /.sites-runtime/
 /.agents/
 /.codex/
+/.claude/
 /outputs/
 /work/

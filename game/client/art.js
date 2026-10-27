@@ -27,11 +27,17 @@
   catalogColumns.forEach((identities, column) => identities.forEach((identity, row) => {
     catalog[identity] = {
       shape: shapes[column],
-      visual: cell('assets/catalog-lots-v1.png', 6, 3, column, row)
+      visual: cell(`assets/catalog-original-v2/${identity}.webp`, 1, 1, 0, 0)
     };
   }));
+  const expansionImages = ['railway-cabinet-clock-v2.webp','cracked-porcelain-cup-v2.webp','naval-service-badge-v2.webp','replica-folding-camera-v2.webp','console-receiver-v2.webp','original-railway-map-v2.webp'];
   ['cabinet-clock','cracked-cup','navy-badge','replica-camera','console-radio','railway-map'].forEach((identity,column) => {
-    catalog[identity] = {shape:shapes[column],visual:cell('assets/catalog-expansion-v1.svg',6,1,column,0)};
+    catalog[identity] = {shape:shapes[column],visual:cell(`assets/catalog-expansion-v2/${expansionImages[column]}`,1,1,0,0)};
+  });
+
+  ['midnight-regulator','tide-wireless','blue-line-cup','canceled-voyage-medal','last-service-camera','night-pilot-chart','gilded-prop-clock','silver-stage-chart'].forEach((identity,index) => {
+    const shape=['clock','radio','cup','badge','camera','map','clock','map'][index];
+    catalog[identity]={shape,visual:cell('assets/rare-lots-v1.png',4,2,index%4,Math.floor(index/4))};
   });
 
   // Covered artwork must depend only on the public outline, including before

@@ -74,9 +74,10 @@
   function localize(node) {(root.SecondValueOnlineLocale || root.SecondValueLocale)?.localize?.(node);}
   function art(item,known) {
     const config=root.SecondValueArt?.visualFor?.(item,known);
-    if(!config || !/^assets\/[\w-]+\.(?:png|svg|webp)$/.test(config.sheet))return '<span class="tutorial-art-fallback" aria-hidden="true">?</span>';
+    if(!config || !/^assets\/(?:[\w-]+\/)*[\w-]+\.(?:png|svg|webp)$/.test(config.sheet))return '<span class="tutorial-art-fallback" aria-hidden="true">?</span>';
     const x=config.columns>1?100*config.column/(config.columns-1):0,y=config.rows>1?100*config.row/(config.rows-1):0;
-    return `<span class="tutorial-art" aria-hidden="true" style="background-image:url('${config.sheet}');background-size:${config.columns*100}% ${config.rows*100}%;background-position:${x}% ${y}%"></span>`;
+    const position=config.columns===1&&config.rows===1?'background-size:contain;background-repeat:no-repeat;background-position:center':`background-size:${config.columns*100}% ${config.rows*100}%;background-position:${x}% ${y}%`;
+    return `<span class="tutorial-art" aria-hidden="true" style="background-image:url('${config.sheet}');${position}"></span>`;
   }
   function facts() {return `<div class="tutorial-facts"><div><span>Practice cash</span><strong>${money(practice.startingCash)}</strong></div><div><span>Auction-house reserve</span><strong>${money(practice.reserve)}</strong></div><div><span>Round</span><strong>3 / 3</strong></div></div>`;}
   function controls(content) {return `<div class="tutorial-actions">${content}</div>`;}

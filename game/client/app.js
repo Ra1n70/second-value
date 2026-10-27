@@ -6,6 +6,8 @@
   const Show = window.SecondValueShow;
   const Clues = window.SecondValueRoundClues;
   const SaleCompare = window.SecondValueSaleComparison;
+  const Book = window.SecondValueCollection;
+  const Zoom = window.SecondValueArtZoom;
   const Notes = window.SecondValueNotebook;
   const Tutorial = window.SecondValueTutorial;
   const main = document.getElementById('game');
@@ -180,6 +182,11 @@
     const indices=game.items.map((_,index)=>index).filter(index=>informationFor(index).known);
     return `<section class="confirmed-notes" aria-label="Confirmed information"><div class="notes-heading"><span class="eyebrow">CONFIRMED INFORMATION</span><span class="small muted">${indices.length} / ${game.items.length} confirmed</span></div>${indices.length?indices.map(index=>{const item=game.items[index],info=informationFor(index);return `<button type="button" class="confirmed-note" data-item="${index}" aria-pressed="${game.selected===index}"><span class="note-letter">${String.fromCharCode(65+index)}</span><span class="note-identity"><span>${item.name}</span><small><span>${info.source}</span> · <span>${item.genuine?'Genuine':'Reproduction'}</span></small></span><span class="note-price"><span>${item.base} base</span></span></button>`;}).join(''):'<p class="small muted">No objects confirmed yet. Catalog ranges describe possibilities, not actual prices.</p>'}</section>`;
   }
+  function rareStory(item, known) {
+    if(known!==true)return '';
+    const entry=E.catalogItems(game).find(candidate=>candidate.catalogId===item.catalogId);
+    return Book.storyMarkup(entry,true);
+  }
   function objectDetail() {
     const item=game.items[game.selected],info=informationFor(game.selected),range=E.catalogFor(item.shape,game);
     const facts=info.known
@@ -187,9 +194,9 @@
       : `<div><dt>Catalog range</dt><dd>${range.min}–${range.max}</dd></div><div><dt>Identity</dt><dd>Unconfirmed</dd></div>`;
     return `<section class="object-detail ${info.known?'detail-known':''}" id="selected-object" aria-labelledby="object-detail-title">
       <div class="detail-heading"><span class="detail-letter">${String.fromCharCode(65+game.selected)}</span><div><span class="eyebrow">SELECTED OBJECT</span><h3 id="object-detail-title">${info.known?item.name:E.SHAPES[item.shape]}</h3></div></div>
-      <div class="detail-body"><div class="detail-visual" aria-hidden="true">${itemArt(item,info.known)}${info.known?`<span class="authenticity-stamp ${item.genuine?'is-genuine':'is-reproduction'}">${item.genuine?'Genuine':'Reproduction'}</span>`:''}</div><div><span class="detail-badge">${info.source}</span><dl class="detail-facts">${facts}</dl></div></div>
+      <div class="detail-body"><div class="detail-visual">${Zoom.trigger(item,info.known,itemArt(item,info.known))}${info.known?`<span class="authenticity-stamp ${item.genuine?'is-genuine':'is-reproduction'}">${item.genuine?'Genuine':'Reproduction'}</span>`:''}</div><div><span class="detail-badge">${info.source}</span><dl class="detail-facts">${facts}</dl></div></div>
       ${info.known?`<details class="detail-extra"><summary>Condition & ability details</summary><p>${itemAttributes(item)}</p></details>`:`<p class="detail-explanation">Only the silhouette is confirmed. Exact identity, condition and value remain hidden.</p><details class="detail-catalog"><summary>Possible catalog matches</summary>${E.catalogItems(game).filter(candidate=>candidate.shape===item.shape).map(candidate=>`<div><span>${candidate.name}</span><strong>${candidate.base} base</strong></div>`).join('')}<p class="small muted">These are possibilities, not a confirmed identity.</p></details>`}
-      <div class="detail-manifest"><span class="eyebrow">Auctioneer’s manifest</span><p>${publicClue()}</p></div>
+      ${rareStory(item,info.known)}<div class="detail-manifest"><span class="eyebrow">Auctioneer’s manifest</span><p>${publicClue()}</p></div>
     </section>`;
   }
   function actionDock() {
@@ -246,7 +253,7 @@
     save();review.showModal();body.querySelector('#cancel-review').focus({preventScroll:true});review.scrollTop=0;
   }
   function truth() {
-    return `<div class="truth-grid">${game.items.map(item=>`<div class="truth-row"><span class="truth-art" aria-hidden="true">${itemArt(item,true)}</span><div><p>${item.name}</p><small>${itemAttributes(item)}</small></div><strong>${item.base} base</strong></div>`).join('')}</div>`;
+    return `<div class="truth-grid">${game.items.map(item=>`<div class="truth-row"><span class="truth-art">${Zoom.trigger(item,true,itemArt(item,true))}</span><div><p>${item.name}</p><small>${itemAttributes(item)}</small></div><strong>${item.base} base</strong></div>`).join('')}</div>`;
   }
   function receiptHtml(receipt,preview) {
     const processed=(ids,label)=>ids?.length?`<p class="small muted processing-receipt"><span>${label}</span>${ids.map(id=>`<span style="display:block">${escape(game.items.find(item=>item.id===id).name)}</span>`).join('')}</p>`:'';
@@ -291,12 +298,17 @@
     const hint=item=>game.role==='salvager'?`<span>Parts sale price</span> 90 · <span>Parts fee</span> 15 · <span>Net parts gain</span> <strong class="${75-item.base<0?'negative':'positive'}">${signed(75-item.base)}</strong>`:game.role==='curator'?`<span>${item.category}</span> · <span>Exhibition bonus</span> +${Math.min(40,Math.floor(item.base/5))}`:`<span>Customer premium</span> +${Math.min(90,Math.floor(item.base*.3))} · <span>Packing &amp; delivery</span> 25 · <span>Net gain vs ordinary sale</span> <strong class="${Math.min(90,Math.floor(item.base*.3))-25<0?'negative':'positive'}">${signed(Math.min(90,Math.floor(item.base*.3))-25)}</strong>`;
     return `<section class="processing-selection"><h3>${E.ROLES[game.role].skill}</h3><p class="small muted">${abilityInstruction()}</p>${game.role==='curator'?'<p class="small muted">Exhibition bonus: 20% per object, rounded down, up to 40 each.</p>':game.role==='broker'?'<p class="small muted">Customer premium: 30% of base price, rounded down, up to 90.</p>':''}<p class="selection-count"><span>${abilityIds.length} / ${limit}</span> <span>selected</span></p>${eligible.map(item=>`<button type="button" class="processing-object" data-ability="${escape(item.id)}" aria-pressed="${abilityIds.includes(item.id)}" aria-label="Select ability object: ${escape(item.name)}" ${abilityIds.length>=limit&&!abilityIds.includes(item.id)?'disabled':''}><span>${item.name}</span><small>${hint(item)}</small></button>`).join('')}${!eligible.length?'<p class="muted small">No eligible objects for this ability. Sell at ordinary prices.</p>':''}${!abilityIds.length?'<p class="small muted">No objects selected. Ordinary sale applies with no ability fee.</p>':''}<p class="small muted">Unselected objects fund fees first; selected objects cannot fund their own processing.</p><p class="small muted">Nothing is selected automatically. Compare the net gain before confirming.</p></section>`;
   }
+  function settledDiscoveries() {
+    if(!game||game.phase!=='result'||!game.winner)return '';
+    const ids=Book.recordSettlement({key:`solo:${session.seed}:${session.auctionNumber}`,phase:'result',sold:true,active:true,rulesVersion:game.rulesVersion??1,lots:game.items.map(item=>({...item,known:true,source:'Crate opened'}))});
+    return Book.newDiscoveriesMarkup(ids);
+  }
   function result() {
     const board=E.sessionStandings(session),won=game.winner==='you';
     const outcome=!game.winner?(game.reservePrice?'No bid met the reserve. Nobody pays.':'The final round had no bids. Nothing was charged.'):won?`You bought the crate for ${money(game.bid)} and ${game.receipt.profit<0?'lost':'made'} ${money(Math.abs(game.receipt.profit))}.`:game.passed?'You passed this crate. Your cash is unchanged.':`${bidderName(game.winner)} bought the crate. Your cash is unchanged.`;
     const total=session.cash-E.STARTING_CASH;
     const actions=session.ended?'<button type="button" class="primary" id="new-session">Start a new session →</button><button type="button" id="change-role">Choose a different role</button>':'<button type="button" class="primary" id="continue-session">Continue to the next auction →</button><button type="button" id="finish-session">Leave & settle session</button>';
-    return `<div class="result-heading workbench-head"><div><span class="eyebrow">${session.ended?'SESSION FINISHED':'AUCTION SETTLED'}</span><h1>${session.ended?'Your session is settled.':'One crate down. Your next decision.'}</h1><p>${outcome}</p></div><div class="workbench-tools">${Notes.buttonMarkup()}</div></div>${valuationMarkup()}
+    return `<div class="result-heading workbench-head"><div><span class="eyebrow">${session.ended?'SESSION FINISHED':'AUCTION SETTLED'}</span><h1>${session.ended?'Your session is settled.':'One crate down. Your next decision.'}</h1><p>${outcome}</p></div><div class="workbench-tools">${Notes.buttonMarkup()}</div></div>${valuationMarkup()}${settledDiscoveries()}
       <div class="auction-layout phase-layout"><section><h3>${session.ended?'Final standings':'Current standings'}</h3><p class="small muted">Ranking uses cumulative cash across this session.</p><div class="score-list">${board.map(player=>`<div class="score-row ${player.id==='you'?'self':''}" ${player.id==='you'?'aria-label="Your session standing"':''}><span class="score-rank">${1+board.filter(other=>other.cash>player.cash).length}</span><span class="score-name">${player.name}<small>${E.ROLES[player.role].short}${player.id==='you'?' · You':''}</small></span><span class="score-cash">${money(player.cash)}<small class="${player.profit<0?'negative':'positive'}" style="display:block;font-size:11px;text-align:right">${signed(player.profit)} profit</small></span></div>`).join('')}</div>${ledgerHtml()}<details class="catalog"><summary>Reveal this crate & all bids</summary>${truth()}${historyMarkup()}</details></section>
       <aside class="side-panel stage-controls phase-controls"><div class="stage-heading"><span class="eyebrow">04 / SESSION RESULT</span><h3>Next move</h3></div><div class="session-total"><div class="receipt-line"><span>Current cash</span><strong>${money(session.cash)}</strong></div><div class="receipt-line"><span>Total profit</span><strong class="${total<0?'negative':'positive'}">${signed(total)}</strong></div><p>${session.history.length} ${session.history.length===1?'crate':'crates'} settled.</p></div><p>${session.ended?'Your final cash includes every completed auction. No extra payout is added.':'Carry your cash into another auction, or leave with your current balance.'}</p><div class="restart-row session-decisions">${actions}</div><p class="action-hint">${session.ended?'A new session starts everyone at 1,000 coins. This session’s result stays final.':'The next crate has fresh objects and ability uses. Everyone keeps their own current cash.'}</p><div id="session-error" class="error" role="alert"></div><details class="latest-receipt"><summary>Latest crate receipt</summary>${receiptHtml(game.receipt,false)}<p>Crate profit = sale proceeds + ability bonus − winning bid − processing fees.</p></details></aside></div>`;
   }

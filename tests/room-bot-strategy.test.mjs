@@ -200,7 +200,7 @@ test('styles differ by confidence: bold competes early while patient can lead wi
 });
 
 test('patient valuation responds to newly published genuine counts rather than only raising bids with the round', () => {
-  const [first, second] = confidenceSnapshots(0, true);
+  const [first, second] = confidenceSnapshots(2, true);
   assert.equal(first.public.genuineCount, null);
   assert.equal(second.public.genuineCount, 6);
   assert.ok(first.lots.every(lot => !lot.known) && second.lots.every(lot => !lot.known));
