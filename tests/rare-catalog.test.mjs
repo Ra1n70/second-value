@@ -41,6 +41,7 @@ const oldRooms = {
 function roomFor(seed, rulesVersion = 6) {
   const room = R.createRoom({code:'RAREGD', seed, host:{id:'host',name:'Host',role:'appraiser',theme:'harbor'}});
   room.rulesVersion = rulesVersion;
+  room.players[0].cash = E.startingCashFor(rulesVersion);
   R.joinRoom(room, {id:'guest',name:'Guest',role:'restorer',theme:'harbor'});
   for (const actor of ['host','guest']) action(room, actor, 'ready', {ready:true});
   action(room, 'host', 'start');
@@ -57,7 +58,7 @@ function settleSession(session) {
 }
 
 test('v6 adds eight fixed identities without changing the catalogs or draw/quote goldens of rules 1–5', () => {
-  assert.equal(E.RULES_VERSION, 6);
+  assert.equal(E.RULES_VERSION, 7);
   assert.equal(E.ITEMS.length, 32);
   assert.equal(rare.length, 8);
   assert.equal(rare.filter(candidate => candidate.genuine && candidate.condition === 'damaged').length, 2);

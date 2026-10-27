@@ -52,3 +52,7 @@
   .expanded-roles .role-card .risk,.online-lobby .expanded-roles .role-card .risk{display:block;font-size:12px}
   .expanded-roles .gold,.online-lobby .expanded-roles .role-card .gold{font-size:13px;min-height:0}
 }
+/* A narrow role card stacks its portrait above the title, so role names wrap between words, never inside one. */
+.expanded-roles .role-card{container-type:inline-size}
+.expanded-roles .role-heading h3{overflow-wrap:break-word}
+@container (max-width:225px){.expanded-roles .role-heading:has(.role-portrait),.online-lobby .expanded-roles .role-card .role-heading:has(.role-portrait){flex-direction:column;align-items:flex-start;gap:7px}}

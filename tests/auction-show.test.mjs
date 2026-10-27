@@ -259,3 +259,18 @@ test('blocked or failed music never claims to be playing and a late play promise
   button.click();track.resolve();await flush();assert.equal(runtime.show.musicEnabled,true);
   track.listeners.error();assert.equal(runtime.show.musicEnabled,false);assert.equal(track.paused,true);
 });
+
+test('a room marks only computer names as game text; human nicknames stay user text', () => {
+  const runtime = setup(), container = runtime.element();
+  const human={id:'host',name:'Marlow 1',role:'restorer',actual:true,affordable:true,recovery:500,cost:0,abilityGain:0,profit:100};
+  const computer={...human,id:'computer-1',actual:false,localizeName:true};
+  const markup=runtime.show.valuationMarkup({ordinary:500,winningBid:400,rows:[human,computer]});
+  assert.equal(markup.match(/<strong data-user-text>Marlow 1<\/strong>/g).length,1,'a human who types a computer-like name is still user text');
+  assert.equal(markup.match(/<strong>Marlow 1<\/strong>/g).length,1);
+  runtime.show.present(container,{key:'inspect',event:null});
+  runtime.show.present(container,{key:'hammer',event:'hammer',winnerName:'Finch 2',localizeWinnerName:true,bids:[{name:'Finch 2',bid:400,localizeName:true},{name:'<b>Ann</b>',bid:300}],winningBid:400});
+  const scene=runtime.scenes[0].innerHTML;
+  assert.match(scene,/<span class="moment-bid-name">Finch 2<\/span>/);
+  assert.match(scene,/<span class="moment-bid-name" data-user-text>&lt;b&gt;Ann&lt;\/b&gt;<\/span>/);
+  assert.match(scene,/<small><span>Finch 2<\/span>/);
+});

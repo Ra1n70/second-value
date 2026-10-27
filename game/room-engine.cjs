@@ -5,19 +5,23 @@ const E = require('./engine.cjs');
 const Computers = require('./room-bots.cjs');
 const clone = value => structuredClone(value);
 const activePlayers = room => room.players.filter(player => player.active);
+const openingCash = room => E.startingCashFor(room.rulesVersion ?? 2);
+const loneHuman = players => players.length >= 2 && players.filter(player => !player.isBot).length === 1;
 const fail = message => { throw new Error(message); };
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
+// A short match gives a table a fixed finish; rooms without a limit keep opening crates.
+const MATCH_CRATES = 5;
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
 
 function validateRoom(room) {
   if (!room || room.version !== 1 || !Array.isArray(room.players)) fail('Choose a valid room.');
 }
-function profile(input) {
+function profile(input, cash = E.STARTING_CASH) {
   if (!plain(input) || typeof input.id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(input.id)) fail('Choose a valid player.');
   if (typeof input.name !== 'string' || [...input.name.trim()].length < 1 || [...input.name.trim()].length > 20 || /[\u0000-\u001f\u007f]/.test(input.name)) fail('Enter a name from 1 to 20 characters.');
   if (!own(E.ROLES, input.role)) fail('Choose a valid role.');
   if (input.role === 'collector' && !own(E.THEMES, input.theme)) fail('Choose a valid collection theme.');
-  return {id: input.id, name: input.name.trim(), role: input.role, theme: input.role === 'collector' ? input.theme : null, cash: E.STARTING_CASH, profit: 0, ready: false, active: true, bid: null, inspected: []};
+  return {id: input.id, name: input.name.trim(), role: input.role, theme: input.role === 'collector' ? input.theme : null, cash, profit: 0, ready: false, active: true, bid: null, inspected: []};
 }
 function phase(room, next) {
   room.phase = next;
@@ -93,18 +97,18 @@ function computerProfile(room, style) {
   const role = roles[Math.floor(random() * roles.length)], theme = role === 'collector' ? Object.keys(E.THEMES)[Math.floor(random() * Object.keys(E.THEMES).length)] : null;
   const names = ['Marlow', 'Finch', 'Vale'];
   room.nextBotId = ordinal;
-  return {...profile({id: `computer-${ordinal}`, name: `${names[(ordinal - 1) % names.length]} ${ordinal}`, role, theme}), isBot: true, botStyle: style, ready: true};
+  return {...profile({id: `computer-${ordinal}`, name: `${names[(ordinal - 1) % names.length]} ${ordinal}`, role, theme}, openingCash(room)), isBot: true, botStyle: style, ready: true};
 }
 function createRoom({code, seed, host} = {}) {
   if (typeof code !== 'string' || !/^[A-Z0-9]{4,12}$/.test(code)) fail('Choose a valid room code.');
   if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) fail('Choose a valid game seed.');
-  const player = profile(host);
-  return {version: 1, rulesVersion: E.RULES_VERSION, code, seed, revision: 1, turnSequence: 0, turnId: `${code}:0`, phase: 'lobby', hostId: player.id, players: [player], auctionNumber: 0, round: 0, items: [], publicIndex: null, reservePrice: 0, sourceId: null, history: [], priority: [], winnerId: null, winningBid: null, receipt: null, ledger: [], endedReason: null};
+  const player = profile(host, E.startingCashFor(E.RULES_VERSION));
+  return {version: 1, rulesVersion: E.RULES_VERSION, code, seed, revision: 1, turnSequence: 0, turnId: `${code}:0`, phase: 'lobby', hostId: player.id, players: [player], auctionNumber: 0, round: 0, items: [], publicIndex: null, reservePrice: 0, sourceId: null, history: [], priority: [], winnerId: null, winningBid: null, receipt: null, ledger: [], endedReason: null, crateLimit: null};
 }
 function joinRoom(room, input) {
   validateRoom(room);
   requirePhase(room, ['lobby']);
-  const player = profile(input);
+  const player = profile(input, openingCash(room));
   if ((room.rulesVersion ?? 2) < 3 && ['salvager', 'curator', 'broker'].includes(player.role)) fail('Start a new room to use the expanded roles.');
   if (room.players.some(candidate => candidate.id === player.id)) fail('This player has already joined.');
   if (activePlayers(room).length >= 4) fail('The room already has four players.');
@@ -117,7 +121,7 @@ function validateCommand(command) {
   const fields = {
     configure: ['role', 'theme'], ready: ['ready'], start: [], inspect: ['slot'],
     bid: ['amount', 'pass'], withdraw: [], next: [], sell: ['mode', 'repairSlots', 'pairSlots'],
-    continue: [], finish: [], leave: [], 'add-bot': ['style'], 'remove-bot': ['playerId']
+    continue: [], finish: [], leave: [], 'end-stalled': [], 'add-bot': ['style'], 'remove-bot': ['playerId'], 'match-length': ['crates']
   };
   if (!own(fields, command.type)) fail('Choose a valid room action.');
   // Existing clients may omit abilitySlots. An omitted selection never activates
@@ -130,6 +134,11 @@ function ledgerEntry(room) {
   if (room.ledger.some(entry => entry.auctionNumber === room.auctionNumber)) fail('This crate has already been settled.');
   room.valuation = settledValuation(room);
   room.ledger.push({auctionNumber: room.auctionNumber, winnerId: room.winnerId, paid: room.winningBid || 0, players: room.players.map(player => ({id: player.id, name: player.name, cash: player.cash, profit: player.profit})), ...(room.reservePrice > 0 ? {reservePrice: room.reservePrice} : {})});
+  if (room.crateLimit && room.auctionNumber >= room.crateLimit) {
+    room.endedReason = 'The five-crate match is complete.';
+    phase(room, 'ended');
+    return;
+  }
   for (const player of room.players) player.ready = !!player.isBot;
   phase(room, 'result');
 }
@@ -157,7 +166,7 @@ function reveal(room) {
   }
   const winner = playerFor(room, resolved.winner);
   winner.cash -= resolved.highest;
-  winner.profit = winner.cash - E.STARTING_CASH;
+  winner.profit = winner.cash - openingCash(room);
   phase(room, 'dispose');
   if (winner.isBot) {
     // The crate is open now. Computers use the same funded sale planner as a
@@ -168,7 +177,7 @@ function reveal(room) {
 }
 function settleSale(room, player, plan) {
   player.cash += plan.recovery;
-  player.profit = player.cash - E.STARTING_CASH;
+  player.profit = player.cash - openingCash(room);
   room.receipt = {paid: room.winningBid, sale: plan.sale, cost: plan.cost, bonus: plan.bonus, recovery: plan.recovery, profit: plan.recovery - room.winningBid, cash: player.cash, repairs: plan.repairs.map(id => room.items.findIndex(item => item.id === id)), pair: plan.pair.map(id => room.items.findIndex(item => item.id === id)), ability: (plan.ability || []).map(id => room.items.findIndex(item => item.id === id)), ...(room.reservePrice > 0 ? {reservePrice: room.reservePrice} : {})};
   ledgerEntry(room);
 }
@@ -176,7 +185,38 @@ function slotsToIds(room, slots, limit = 2) {
   if (!Array.isArray(slots) || slots.length > limit || slots.some(slot => !Number.isInteger(slot) || slot < 0 || slot >= room.items.length) || new Set(slots).size !== slots.length) fail('Choose valid processing objects.');
   return slots.map(slot => room.items[slot].id);
 }
-function applyAction(room, actorId, command) {
+// This identifies required decisions only. Credential timestamps and the
+// waiting period are authoritative API concerns, never client-supplied facts.
+function blockingPlayerIds(room) {
+  validateRoom(room);
+  const players = activePlayers(room), humans = players.filter(player => !player.isBot);
+  if (room.phase === 'auction') return humans.filter(player => !player.bid).map(player => player.id);
+  if (room.phase === 'dispose') return humans.filter(player => player.id === room.winnerId).map(player => player.id);
+  if (room.phase === 'round-summary') return humans.filter(player => player.id === room.hostId).map(player => player.id);
+  if (room.phase === 'result') {
+    const unready = humans.filter(player => !player.ready);
+    return (unready.length ? unready : humans.filter(player => player.id === room.hostId)).map(player => player.id);
+  }
+  return [];
+}
+function cancelUnfinishedCrate(room) {
+  let refund = 0;
+  if (room.phase === 'dispose') {
+    if (!Number.isSafeInteger(room.winningBid) || room.winningBid < 0) fail('This crate cannot be cancelled safely.');
+    refund = room.winningBid;
+    const winner = playerFor(room, room.winnerId, false);
+    winner.cash += refund;
+    winner.profit = winner.cash - openingCash(room);
+  }
+  room.cancelledCrate = true;
+  room.cancelledRefund = refund;
+  room.items = []; room.history = []; room.priority = []; room.cratePlayers = [];
+  room.publicIndex = null; room.reservePrice = 0; room.sourceId = null; room.round = 0;
+  room.winnerId = null; room.winningBid = null; room.receipt = null;
+  delete room.valuation;
+  for (const player of room.players) { player.bid = null; player.inspected = []; }
+}
+function applyAction(room, actorId, command, canEndStalled = false) {
   validateRoom(room);
   validateCommand(command);
   if (command.turnId !== room.turnId) fail('The room has moved on. Refresh before trying again.');
@@ -184,7 +224,13 @@ function applyAction(room, actorId, command) {
   if (current.isBot) fail('Computer players act automatically.');
   if (room.phase === 'ended') fail('This room has ended.');
   const draft = clone(room), player = playerFor(draft, current.id);
-  if (command.type === 'add-bot') {
+  if (command.type === 'end-stalled') {
+    requirePhase(draft, ['auction', 'round-summary', 'dispose', 'result']);
+    if (canEndStalled !== true || !blockingPlayerIds(draft).length) fail('A required player must be offline for two minutes before ending the session.');
+    if (draft.phase !== 'result') cancelUnfinishedCrate(draft);
+    draft.endedReason = 'The session ended after a required player stayed offline.';
+    phase(draft, 'ended');
+  } else if (command.type === 'add-bot') {
     requirePhase(draft, ['lobby']); requireHost(draft, player);
     if (typeof command.style !== 'string' || !own(Computers.STYLES, command.style)) fail('Choose a valid computer style.');
     if (activePlayers(draft).length >= 4) fail('The room already has four players.');
@@ -197,6 +243,13 @@ function applyAction(room, actorId, command) {
     const computer = playerFor(draft, command.playerId);
     if (!computer.isBot) fail('Only computer players can be removed.');
     draft.players = draft.players.filter(candidate => candidate.id !== computer.id);
+  } else if (command.type === 'match-length') {
+    requirePhase(draft, ['lobby']); requireHost(draft, player);
+    if (command.crates !== null && command.crates !== MATCH_CRATES) fail('Choose a valid match length.');
+    if ((draft.crateLimit ?? null) === command.crates) return room;
+    draft.crateLimit = command.crates;
+    // Readiness agreed to the previous length, so other humans confirm the new one.
+    for (const candidate of draft.players) if (!candidate.isBot && candidate.id !== player.id) candidate.ready = false;
   } else if (command.type === 'configure') {
     requirePhase(draft, ['lobby']);
     const next = profile({...player, role: command.role, theme: command.theme});
@@ -257,6 +310,8 @@ function applyAction(room, actorId, command) {
   } else if (command.type === 'continue') {
     requirePhase(draft, ['result']); requireHost(draft, player);
     const players = activePlayers(draft);
+    // With only computers waiting, the host opening the next crate is their readiness.
+    if (loneHuman(players)) player.ready = true;
     if (players.length < 2 || players.some(candidate => !candidate.ready)) fail('At least two players must all be ready.');
     draft.auctionNumber++;
     drawCrate(draft);
@@ -301,13 +356,14 @@ function viewFor(room, viewerId) {
   const publicRepair = room.round === 3 || opened;
   return {
     code: room.code, revision: room.revision, rulesVersion: room.rulesVersion ?? 2, turnId: room.turnId, phase: room.phase,
-    hostId: room.hostId, selfId: viewer.id, auctionNumber: room.auctionNumber, round: room.round, reservePrice: room.reservePrice ?? 0, sourceId: room.sourceId ?? null,
+    hostId: room.hostId, selfId: viewer.id, auctionNumber: room.auctionNumber, ...(room.crateLimit ? {crateLimit: room.crateLimit} : {}), round: room.round, reservePrice: room.reservePrice ?? 0, sourceId: room.sourceId ?? null,
     players: room.players.map(player => ({id: player.id, name: player.name, role: player.role, theme: player.theme, cash: player.cash, profit: player.profit, ready: player.ready, submitted: !!player.bid, active: player.active, isBot: !!player.isBot, ...(player.isBot ? {botStyle: player.botStyle} : {})})),
     self: {id: viewer.id, role: viewer.role, theme: viewer.theme, cash: viewer.cash, inspectionsLeft: viewer.role === 'appraiser' ? Math.max(0, 2 - viewer.inspected.length) : 0, inspected: [...viewer.inspected], bid: clone(viewer.bid), submitted: !!viewer.bid, isBot: !!viewer.isBot, ...(viewer.isBot ? {botStyle: viewer.botStyle} : {})},
     lots: room.items.map((item, slot) => publicItem(room, viewer, item, slot)),
     public: {genuineCount: publicCount ? room.items.filter(item => item.genuine).length : null, repairableCount: publicRepair ? room.items.filter(item => item.genuine && item.condition === 'damaged' && item.repair).length : null, publicIndex: room.round === 3 || opened ? room.publicIndex : null},
     history: clone(room.history), priority: [...room.priority], winnerId: room.winnerId, winningBid: room.winningBid,
     receipt: clone(room.receipt), ledger: clone(room.ledger),
+    ...(room.cancelledCrate === true ? {cancelledCrate:true, cancelledRefund:room.cancelledRefund ?? 0} : {}),
     ...(['result', 'ended'].includes(room.phase) ? {valuation: clone(room.valuation ?? settledValuation(room))} : {}),
     can: {
       addBot: isHost && room.phase === 'lobby' && players.length < 4,
@@ -319,11 +375,11 @@ function viewFor(room, viewerId) {
       next: isHost && room.phase === 'round-summary',
       sell: viewer.active && room.phase === 'dispose' && room.winnerId === viewer.id,
       ready: viewer.active && ['lobby', 'result'].includes(room.phase),
-      continue: isHost && room.phase === 'result' && allReady,
+      continue: isHost && room.phase === 'result' && (allReady || loneHuman(players)),
       finish: isHost && room.phase === 'result',
       leave: viewer.active && ['lobby', 'result'].includes(room.phase)
     }, endedReason: room.endedReason
   };
 }
 
-module.exports = {createRoom, joinRoom, applyAction, viewFor};
+module.exports = {createRoom, joinRoom, applyAction, viewFor, blockingPlayerIds};

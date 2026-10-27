@@ -7,7 +7,7 @@
   const STARTING_CASH = 1000;
   const CRATE_SIZE = 6;
   const MAX_SESSION_ACTIONS = 10000;
-  const RULES_VERSION = 6;
+  const RULES_VERSION = 7;
   const THEMES = {harbor:'Old Harbor', railway:'Railway'};
   const SOURCES = {
     workshop: {name:"Watchmaker's clearance",evidence:'A faded repair tag',hint:'Mechanical objects and genuine damaged pieces are more likely.',story:'A shuttered watchmaker leaves behind unfinished repairs and forgotten keepsakes.'},
@@ -65,7 +65,9 @@
   ].map(item=>({...item,catalogId:item.id,appearance:item.shape,authenticity:item.genuine?'genuine':'reproduction',baseValue:item.base,harbor:item.theme==='harbor',rarity:'rare'}));
   const RARE_IDS = new Set(RARE_ITEMS.map(item=>item.catalogId));
   const ITEMS = [...REVISION_THREE_ITEMS,...RARE_ITEMS];
-  function validateRules(version) {if(![1,2,3,4,5,6].includes(version))throw new Error('Choose a valid rules revision.');return version;}
+  // Rules 7 keep the rules 6 catalog and start every table with 1,500, so most crates are contested on value, not cash.
+  function startingCashFor(rulesVersion) {return rulesVersion>=7?1500:STARTING_CASH;}
+  function validateRules(version) {if(![1,2,3,4,5,6,7].includes(version))throw new Error('Choose a valid rules revision.');return version;}
   function savedRules(raw) {return Object.hasOwn(raw,'rulesVersion')?validateRules(raw.rulesVersion):1;}
   function catalogItems(gameOrVersion) {
     const version=gameOrVersion===undefined?RULES_VERSION:typeof gameOrVersion==='number'?gameOrVersion:gameOrVersion.rulesVersion??1;
@@ -281,7 +283,7 @@
         if(new Set(crate.map(item=>item.catalogId)).size!==crate.length)return;
         if(genuineCount!==null&&crate.filter(item=>item.genuine).length!==genuineCount)return;
         if(repairCount!==null&&crate.filter(canRepair).length!==repairCount)return;
-        total+=salePlan(role,crate,'special',context.cash??STARTING_CASH,{theme}).recovery*likelihood;count+=likelihood;return;
+        total+=salePlan(role,crate,'special',context.cash??startingCashFor(context.rulesVersion??1),{theme}).recovery*likelihood;count+=likelihood;return;
       }
       for(const item of possibilities[index]) {
         if(weighted&&crate.some(selected=>selected.catalogId===item.catalogId))continue;
@@ -301,7 +303,7 @@
       const themeDraw=random(),firstTarget=Math.floor(random()*items.length);
       const secondTarget=(firstTarget+1+Math.floor(random()*Math.max(1,items.length-1)))%items.length;
       const risk=random(),theme=role==='collector'?(context.botThemes?.[index]||(themeDraw<.5?'harbor':'railway')):null;
-      const cash=context.botCash?.[index]??STARTING_CASH;
+      const cash=context.botCash?.[index]??startingCashFor(rulesVersion);
       const targets=round>=2?[firstTarget,secondTarget]:[firstTarget];
       let estimate=cash===0||cash<reservePrice?0:estimateFromEvidence(items,role,targets,theme,{...context,round,cash});
       const previous=context.history?.at(-1);
@@ -328,7 +330,7 @@
     const rulesVersion=validateRules(context.rulesVersion??RULES_VERSION);
     if(rulesVersion<3&&['salvager','curator','broker'].includes(role))throw new Error('Choose a valid role.');
     if(role==='collector')validateTheme(theme);
-    const startingCash=context.startingCash??STARTING_CASH,botStartingCash=context.botCash??[STARTING_CASH,STARTING_CASH,STARTING_CASH];
+    const opening=startingCashFor(rulesVersion),startingCash=context.startingCash??opening,botStartingCash=context.botCash??[opening,opening,opening];
     if(!validCash(startingCash)||!Array.isArray(botStartingCash)||botStartingCash.length!==3||!botStartingCash.every(validCash))throw new Error('Available cash must be a nonnegative whole number.');
     const botRoles=rulesVersion>=3?(context.botRoles??seededBotRoles(seed)):['collector','restorer','appraiser'];
     if(!Array.isArray(botRoles)||botRoles.length!==3||new Set(botRoles).size!==3||botRoles.some(botRole=>!Object.hasOwn(ROLES,botRole)))throw new Error('Choose valid locked computer roles.');
@@ -392,7 +394,7 @@
   function standings(game) {
     if(game.phase!=='result')throw new Error('Finish this auction first.');
     const rows=[{id:'you',name:'You',role:game.role,theme:game.theme,cash:game.receipt.cash,profit:game.receipt.profit}];
-    for(const [index,bot] of game.bots.entries()) {const cash=game.botStartingCash?.[index]??STARTING_CASH;let profit=0;if(bot.id===game.winner)profit=salePlan(bot.role,game.items,'special',cash-bot.bid,{theme:bot.theme}).recovery-bot.bid;rows.push({...bot,cash:cash+profit,profit});}
+    for(const [index,bot] of game.bots.entries()) {const cash=game.botStartingCash?.[index]??startingCashFor(game.rulesVersion??1);let profit=0;if(bot.id===game.winner)profit=salePlan(bot.role,game.items,'special',cash-bot.bid,{theme:bot.theme}).recovery-bot.bid;rows.push({...bot,cash:cash+profit,profit});}
     return rows.sort((a,b)=>b.cash-a.cash);
   }
   function restore(raw) {
@@ -435,15 +437,16 @@
     // Validate the original metadata through the same constructor as a single crate.
     const rulesVersion=validateRules(options.rulesVersion??RULES_VERSION);
     const first=newGame(role,seed,theme,{rulesVersion});
-    const players=[{id:'you',name:'You',role,theme:first.theme,cash:STARTING_CASH,profit:0},...first.bots.map(bot=>({id:bot.id,name:bot.name,role:bot.role,theme:bot.theme,cash:STARTING_CASH,profit:0}))];
-    const session={version:5,rulesVersion,seed:seed>>>0,role,theme:first.theme,auctionNumber:1,history:[],cash:STARTING_CASH,players,ended:false,actions:[],game:null};
+    const opening=startingCashFor(rulesVersion);
+    const players=[{id:'you',name:'You',role,theme:first.theme,cash:opening,profit:0},...first.bots.map(bot=>({id:bot.id,name:bot.name,role:bot.role,theme:bot.theme,cash:opening,profit:0}))];
+    const session={version:5,rulesVersion,seed:seed>>>0,role,theme:first.theme,auctionNumber:1,history:[],cash:opening,players,ended:false,actions:[],game:null};
     session.game=sessionGame(session);return session;
   }
   function commitAuction(session) {
     if(session.game.phase!=='result'||session.history.length===session.auctionNumber)return;
     if(session.history.length!==session.auctionNumber-1)throw new Error('This auction has already been settled.');
     const closing=standings(session.game),byId=new Map(closing.map(player=>[player.id,player]));
-    session.players=session.players.map(player=>{const settled=byId.get(player.id);return {...player,cash:settled.cash,profit:settled.cash-STARTING_CASH};});
+    session.players=session.players.map(player=>{const settled=byId.get(player.id);return {...player,cash:settled.cash,profit:settled.cash-startingCashFor(session.rulesVersion??1)};});
     session.cash=session.game.receipt.cash;
     const winningBid=session.game.winner?session.game.history.at(-1).bids.find(bid=>bid.id===session.game.winner).bid:0;
     session.history.push({auctionNumber:session.auctionNumber,winner:session.game.winner,paid:winningBid,humanPaid:session.game.receipt.paid,profit:session.game.receipt.profit,cash:session.cash,recovery:session.game.receipt.recovery,players:session.players.map(player=>({...player,auctionProfit:byId.get(player.id).profit})),...(session.game.reservePrice>0?{reservePrice:session.game.reservePrice}:{})});
@@ -529,5 +532,5 @@
       return session;
     } catch {return null;}
   }
-  return {STARTING_CASH,CRATE_SIZE,MAX_SESSION_ACTIONS,RULES_VERSION,ROLES,THEMES,SOURCES,ITEMS,SHAPES,rng,catalogFor,catalogItems,catalogWeight,abilityEligibility,abilitySelectionLimit,inspect,salePlan,valuationBoard,computerBids,newGame,useSkill,openBidding,returnToInspection,resolveRound,placeBid,nextRound,settle,standings,restore,getCash,newSession,performSession,sessionStandings,restoreSession};
+  return {STARTING_CASH,startingCashFor,CRATE_SIZE,MAX_SESSION_ACTIONS,RULES_VERSION,ROLES,THEMES,SOURCES,ITEMS,SHAPES,rng,catalogFor,catalogItems,catalogWeight,abilityEligibility,abilitySelectionLimit,inspect,salePlan,valuationBoard,computerBids,newGame,useSkill,openBidding,returnToInspection,resolveRound,placeBid,nextRound,settle,standings,restore,getCash,newSession,performSession,sessionStandings,restoreSession};
 });

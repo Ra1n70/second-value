@@ -7,3 +7,30 @@
 .tutorial-dialog .tutorial-public p>span{color:#5b4f35}
 .tutorial-dialog .tutorial-public-title{color:#665632}
 .tutorial-dialog .tutorial-round-note p{color:#665a3f}
+
+/* Lesson switcher plus the Collector and Curator drills on a revealed crate. */
+.tutorial-lessons{display:flex;gap:8px;margin:14px 28px 0}
+.tutorial-dialog .tutorial-lessons button{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:7px 12px;text-align:left;line-height:1.35}
+.tutorial-dialog .tutorial-lessons button[aria-pressed=true]{background:#304c39;border-color:#304c39;color:#f3e9cd}
+.tutorial-lessons b{font-size:15px;font-weight:600}.tutorial-lessons span{font-size:13px;opacity:.8}
+.tutorial-drill-objects{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:18px 0 4px}
+.tutorial-drill-card{min-width:0}
+.tutorial-dialog .tutorial-drill-card button{position:relative;display:flex;gap:12px;align-items:center;width:100%;padding:10px 12px;text-align:left;border-color:#c5b796}
+.tutorial-dialog .tutorial-drill-card button[aria-pressed=true]{border:2px solid #a98b46;padding:9px 11px;background:#efe3c3}
+.tutorial-dialog .tutorial-drill-card.is-ok button[aria-pressed=true]{border-color:#57714c}
+.tutorial-dialog .tutorial-drill-card.is-problem button[aria-pressed=true]{border-color:#b37858}
+.tutorial-drill-card .tutorial-art{width:70px;height:57px;background-color:#324d3c}
+.tutorial-drill-art{position:relative;flex-shrink:0;line-height:0}.tutorial-drill-card .tutorial-object-letter{top:3px;left:5px;z-index:1;line-height:1.4}
+.tutorial-drill-copy{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0}
+.tutorial-drill-copy>strong{font-size:14px;font-weight:600;line-height:1.35;color:#3e553b}
+.tutorial-drill-tags{display:flex;flex-wrap:wrap;gap:3px 5px}
+.tutorial-drill-tags>span{font-size:13px;line-height:1.5;padding:0 6px;border-radius:3px;background:#e3d7b7;color:#5b4f35}
+.tutorial-drill-category{text-transform:capitalize}
+.tutorial-drill-base{font-size:13px;color:#7d6f4f}.tutorial-drill-base b{font-weight:600;color:#4d633f}
+.tutorial-drill-note{margin:5px 2px 0;font-size:13px;line-height:1.45}
+.tutorial-dialog .is-ok .tutorial-drill-note{color:#476940}.tutorial-dialog .is-problem .tutorial-drill-note{color:#a34a37}
+.tutorial-drill-count{margin:0 auto 0 0;font-size:14px;color:#7a6b43}
+.tutorial-drill-verdict{max-width:570px;margin:0 auto 10px;padding:12px 15px;background:#e3d7b7;border-left:3px solid #a28a50;border-radius:3px;font-size:14px;color:#5b4f35}
+.tutorial-drill-verdict.is-best{background:#dfe3c6;border-color:#57714c;color:#3e553b}
+.tutorial-drill-verdict p{margin:0}.tutorial-drill-verdict ul{margin:4px 0;padding-left:20px}.tutorial-drill-verdict b{font-weight:600}
+@media(max-width:740px){.tutorial-lessons{margin:12px 17px 0;gap:6px}.tutorial-dialog .tutorial-lessons button{padding:6px 8px}.tutorial-drill-objects{grid-template-columns:1fr;gap:8px}.tutorial-dialog .tutorial-drill-card button{padding:8px 10px}.tutorial-dialog .tutorial-drill-card button[aria-pressed=true]{padding:7px 9px}.tutorial-drill-card .tutorial-art{width:55px;height:45px}}

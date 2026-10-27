@@ -9,7 +9,7 @@
 .online-reveal .online-paper .text-button{color:#71552b}
 /* Leave every lot label above the bid desk on short desktop windows. */
 .online-waiting{display:flex;align-items:center;flex-wrap:wrap;gap:5px 7px;margin:7px 0;font-size:14px}.online-wait-chip{display:inline-block;max-width:100px;padding:2px 7px;border:1px solid #ac936755;border-radius:3px;background:#bea16418;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.online-wait-chip.is-offline{border-style:dashed;color:#bb795b}.online-ready-message{font-size:14px;margin-top:12px}.online-review-scope{font-size:15px;color:#e8c17f;margin-top:16px}.online-review-balance{display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin:12px 0 5px;padding-top:12px;border-top:1px solid #ac936755;font-size:15px}.online-review-balance strong{font:600 25px/1.2 var(--sans);color:#f0d39b}.online-ledger-list{display:grid;gap:9px;margin-top:13px}.online-ledger-entry{padding:12px;border:1px solid #ac936744;border-radius:4px;background:#0e211650}.online-ledger-heading{display:flex;align-items:baseline;flex-wrap:wrap;gap:5px 14px;font-size:14px}.online-ledger-heading>strong{color:#e8c17f}.online-ledger-heading>span{min-width:0;overflow-wrap:anywhere}.online-ledger-totals{display:flex;justify-content:space-between;flex-wrap:wrap;gap:7px 16px;border-top:1px solid #ac936733;padding-top:8px;margin-top:8px;font-size:14px}.online-ledger-totals strong{margin-left:7px}.online-session-ledger summary{font-weight:600}
-@media(min-width:1050px) and (max-height:800px){
+@media(min-width:851px) and (max-height:960px){
   body.online-mode.tabletop-mode .site-header{padding:5px 0;min-height:48px}
   body.online-mode.tabletop-mode main{padding-top:6px}
   .online-mode .online-room-toolbar.in-game-toolbar{padding-bottom:4px;margin-bottom:7px;min-height:32px}
@@ -136,4 +136,77 @@ html:is([lang="en"],[lang="es"]) .online-mode .online-entry h1 span:last-child {
 @container (max-width:260px) {
   .online-computer-add {grid-template-columns:minmax(0,1fr)}
   .online-computer-add button {max-width:none}
+}
+/* The host chooses free play or a five-crate match; other seats see the choice read-only. */
+.online-match-length {padding:15px 0 0;margin-top:7px;border-top:1px solid #a68e6570}
+.online-match-length h4 {font:600 16px/1.5 var(--sans);margin:0 0 9px;color:#4e3b26}
+.online-match-options {display:grid;gap:8px}
+.online-mode .online-match-options button {display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;min-height:0;padding:9px 12px;text-align:left;white-space:normal;line-height:1.4;color:#3e321f;border-color:#ad9571;background:#f6ead0}
+.online-mode .online-match-options button[aria-pressed=true] {border-color:#7a5f2e;background:#e9d8b4;box-shadow:inset 0 0 0 1px #7a5f2e}
+.online-match-options button>strong {font-size:15px}
+.online-match-options button>span,.online-match-length p {font-size:13px;line-height:1.6;color:#705d43;font-weight:400}
+.online-match-length p {margin:9px 0 0}
+.online-match-length p>strong {display:block;font-size:15px;color:#3e321f}
+.online-match-length p>span {display:block}
+/* The multiplayer detail frame is shorter than the shared tabletop one, so the image is sized to that frame and never rises into the title. */
+@media(min-width:1050px){.online-mode.tabletop-mode .detail-visual{--sprite-height:143px}}
+@media(min-width:851px) and (max-height:960px){body.online-mode.tabletop-mode .workbench-grid .detail-visual{--sprite-height:105px}}
+/* In game the room bar and status share one row, so the crate sits higher on the screen. */
+@media (min-width:851px) {
+  body.online-mode.tabletop-mode #online-game {display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:12px;align-items:center}
+  body.online-mode.tabletop-mode #online-game>* {grid-column:1/-1;min-width:0}
+  body.online-mode.tabletop-mode #online-game>.in-game-toolbar {grid-column:1;margin-bottom:8px;padding-bottom:0;border-bottom:0}
+  body.online-mode.tabletop-mode #online-game>.online-room-status {grid-column:2;margin-bottom:8px}
+}
+@media (min-width:1050px) {
+  .online-mode .online-dock .dock-primary small {max-width:340px}
+}
+@media (min-width:851px) and (max-height:960px) {
+  body.online-mode.tabletop-mode .site-header {grid-template-columns:auto minmax(0,1fr)}
+  body.online-mode.tabletop-mode .site-header .header-tools {justify-content:flex-end}
+}
+/* On short screens the crate caption and bid note repeat the bid bar, so the six objects get that room. */
+@media (min-width:851px) and (max-height:800px) {
+  body.online-mode.tabletop-mode .workbench-grid .crate-top {display:none}
+  body.online-mode.tabletop-mode .workbench-grid .objects {padding-top:0}
+  body.online-mode.tabletop-mode .workbench-grid .object-art {--sprite-height:58px;height:58px}
+  .online-mode .online-dock .dock-primary small:not(.dock-warning) {display:none}
+}
+/* Other seats' status pills are pale paper, so "submitted" needs dark ink; your own dark pill keeps the light green. */
+.online-mode .bidder-seat:not(.is-self) .seat-status.is-submitted {color:#24492a;font-weight:600}
+/* The sale hint sits above the settle button, so an unused ability gain is hard to miss. */
+.online-mode .sale-ability-hint {margin:14px 0 12px;padding:10px 12px;border:1px solid #b08a4a;border-left:3px solid #9a6f2a;border-radius:4px;background:#f3e3bd;color:#3e321f;font-size:14px;line-height:1.5}
+.online-mode .sale-ability-hint>strong {display:block;margin-bottom:4px}
+.online-mode .sale-ability-hint ul {margin:0 0 6px;padding-left:18px}
+.online-mode .sale-ability-hint p {margin:4px 0 0;font-size:13px;color:#5b4a30}
+.online-mode .sale-ability-hint .positive {color:#2f5d33}
+/* Phones keep a one-row bid bar on screen while the bid form is closed, and the source text gets the full width. */
+@media (max-width:740px) {
+  .online-mode .online-dock.dock-idle {position:sticky;bottom:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px 12px;padding:10px 12px}
+  .online-mode .online-dock.dock-idle .dock-context .eyebrow,
+  .online-mode .online-dock.dock-idle .dock-context .small,
+  .online-mode .online-dock.dock-idle .dock-skill,
+  .online-mode .online-dock.dock-idle .dock-primary small:not(.dock-warning) {display:none}
+  .online-mode .online-dock.dock-idle .dock-skill.has-skill-action {display:block;grid-column:1/-1}
+  .online-mode .online-dock.dock-idle .dock-skill.has-skill-action>p {display:none}
+  .online-mode .online-dock.dock-idle .dock-primary {width:auto}
+  .online-mode .online-dock.dock-idle .dock-primary button {width:auto;min-height:44px}
+  body.tabletop-mode .crate-provenance {padding:10px 12px;gap:12px}
+  body.tabletop-mode .provenance-evidence {flex-basis:64px;min-height:0;padding:9px 6px 6px}
+  body.tabletop-mode .provenance-evidence .evidence-number,
+  body.tabletop-mode .provenance-evidence .evidence-lines,
+  body.tabletop-mode .provenance-evidence .evidence-mark {display:none}
+  body.tabletop-mode .provenance-evidence .evidence-word {font-size:11px}
+  body.tabletop-mode .provenance-copy {display:block}
+  body.tabletop-mode .provenance-copy .provenance-hint {margin-top:4px;padding:0;border:0}
+  body.tabletop-mode .provenance-details>summary {padding:4px 0}
+}
+/* On phones the pinned bid bar still shows a blocked ability, since it changes what the crate is worth to you. */
+@media (max-width:740px) {
+  .online-mode .online-dock.dock-idle .dock-skill.is-blocked {display:block;grid-column:1/-1}
+  /* A note or the Appraiser's tool goes under the bid button, so the button keeps the first row. */
+  .online-mode .online-dock.dock-idle .dock-skill.is-blocked,
+  .online-mode .online-dock.dock-idle .dock-skill.has-skill-action {order:3}
+  .online-mode .online-dock.dock-idle .dock-skill.is-blocked>strong {display:none}
+  .online-mode .online-dock.dock-idle .dock-skill.is-blocked>p {display:block;margin:0;font-size:13px;line-height:1.45}
 }

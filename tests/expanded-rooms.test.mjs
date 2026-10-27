@@ -5,6 +5,9 @@ import {createRequire} from 'node:module';
 const require = createRequire(import.meta.url);
 const E = require('../game/engine.cjs');
 const R = require('../game/room-engine.cjs');
+
+// Tables created under the current rules start with this much cash.
+const OPENING = E.startingCashFor(E.RULES_VERSION);
 const originalRoles = ['restorer', 'appraiser', 'collector'];
 const targets = {
   salvager: [0, 1],
@@ -36,7 +39,7 @@ function won(role) {
 const sell = slots => ({mode: 'special', repairSlots: [], pairSlots: [], abilitySlots: slots});
 
 test('new rooms advertise current rules while old rooms keep their catalog across continued auctions', () => {
-  assert.equal(R.viewFor(open('broker'), 'host').rulesVersion, 6);
+  assert.equal(R.viewFor(open('broker'), 'host').rulesVersion, 7);
   const legacy = open('appraiser', true);
   assert.equal(R.viewFor(legacy, 'host').rulesVersion, 2);
   const oldIds = new Set(E.catalogItems(2).map(item => item.catalogId));
@@ -62,7 +65,7 @@ test('new rooms advertise current rules while old rooms keep their catalog acros
 test('all three new role selections settle exactly the shared plan and reject a second credit', () => {
   for (const role of Object.keys(targets)) {
     const room = won(role), slots = targets[role];
-    const remainingCash = 1000 - room.reservePrice;
+    const remainingCash = OPENING - room.reservePrice;
     const expected = E.salePlan(role, room.items, 'special', remainingCash, {abilityIds: slots.map(slot => room.items[slot].id)});
     assert.ok(expected.recovery > room.items.reduce((sum, item) => sum + item.base, 0));
     command(room, 'host', 'sell', sell(slots));

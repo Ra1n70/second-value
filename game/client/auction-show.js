@@ -49,12 +49,12 @@
   function valuationMarkup(board) {
     if (!board || !Array.isArray(board.rows) || !board.rows.length) return '';
     const roles = root.SecondValue?.ROLES || {};
-    const nameAttribute = board.localizeNames === true ? '' : ' data-user-text';
+    const nameAttribute = row => board.localizeNames === true || row.localizeName === true ? '' : ' data-user-text';
     return `<section class="table-valuation" aria-label="The value at this table"><div class="valuation-heading"><div><span class="eyebrow">THE VALUE AT THIS TABLE</span><h3>One crate. Different opportunities.</h3></div><div class="valuation-ordinary"><span>Ordinary crate value</span><strong>${money(board.ordinary)}</strong></div></div><div class="valuation-grid" style="--valuation-columns:${Math.min(4,board.rows.length)}">${board.rows.map((row, index) => {
       const affordable = row.affordable !== false, actual = row.actual === true;
       const role = Object.hasOwn(roles, row.role) ? roles[row.role].short : '';
       const profit = number(row.profit), tone = profit < 0 ? 'is-loss' : profit > 0 ? 'is-gain' : 'is-even';
-      return `<article class="valuation-card ${actual ? 'is-actual' : 'is-hypothetical'} ${affordable ? tone : 'is-unaffordable'}" style="--valuation-order:${index}"><div class="valuation-player">${portrait(row.role)}<div><strong${nameAttribute}>${escape(row.name)}</strong><span>${escape(role)}</span></div>${actual ? '<span class="valuation-seal" aria-hidden="true">✓</span>' : ''}</div><p class="valuation-status">${actual ? 'Actual sale' : affordable ? 'If you had won' : 'Not enough cash'}</p><div class="valuation-profit"><strong>${affordable ? signed(profit) : '—'}</strong><span>${affordable ? 'Profit at this price' : 'This bid exceeds your cash.'}</span></div>${affordable ? `<dl class="valuation-breakdown"><div><dt>Winning price</dt><dd>${money(board.winningBid)}</dd></div><div><dt>Sale after fees</dt><dd>${money(row.recovery)}</dd></div><div><dt>Processing fees</dt><dd>${money(row.cost)}</dd></div><div><dt>Role advantage</dt><dd>${signed(row.abilityGain)}</dd></div></dl>` : `<dl class="valuation-breakdown"><div><dt>Winning price</dt><dd>${money(board.winningBid)}</dd></div><div><dt>Cash before bidding</dt><dd>${money(row.cashBefore)}</dd></div></dl>`}</article>`;
+      return `<article class="valuation-card ${actual ? 'is-actual' : 'is-hypothetical'} ${affordable ? tone : 'is-unaffordable'}" style="--valuation-order:${index}"><div class="valuation-player">${portrait(row.role)}<div><strong${nameAttribute(row)}>${escape(row.name)}</strong><span>${escape(role)}</span></div>${actual ? '<span class="valuation-seal" aria-hidden="true">✓</span>' : ''}</div><p class="valuation-status">${actual ? 'Actual sale' : affordable ? 'If you had won' : 'Not enough cash'}</p><div class="valuation-profit"><strong>${affordable ? signed(profit) : '—'}</strong><span>${affordable ? 'Profit at this price' : 'This bid exceeds your cash.'}</span></div>${affordable ? `<dl class="valuation-breakdown"><div><dt>Winning price</dt><dd>${money(board.winningBid)}</dd></div><div><dt>Sale after fees</dt><dd>${money(row.recovery)}</dd></div><div><dt>Processing fees</dt><dd>${money(row.cost)}</dd></div><div><dt>Role advantage</dt><dd>${signed(row.abilityGain)}</dd></div></dl>` : `<dl class="valuation-breakdown"><div><dt>Winning price</dt><dd>${money(board.winningBid)}</dd></div><div><dt>Cash before bidding</dt><dd>${money(row.cashBefore)}</dd></div></dl>`}</article>`;
     }).join('')}</div><p class="valuation-disclaimer">Hypothetical results use this winning price and each player's cash before bidding. They are not earnings.</p></section>`;
   }
 
@@ -258,11 +258,11 @@
     scene.setAttribute('aria-live','polite');
     scene.setAttribute('aria-atomic','true');
     const bids = Array.isArray(detail.bids) ? detail.bids.slice(0,4) : [];
-    const nameAttribute = detail.localizeNames === true ? '' : ' data-user-text';
-    const envelopes = bids.length ? bids.map(bid => `<span class="moment-envelope"><span class="moment-bid-name"${nameAttribute}>${escape(bid.name)}</span><strong>${number(bid.bid) > 0 ? money(bid.bid) : '<span>Passed</span>'}</strong></span>`).join('') : '<span class="moment-envelope"></span><span class="moment-envelope"></span><span class="moment-envelope"></span>';
+    const nameAttribute = localize => detail.localizeNames === true || localize === true ? '' : ' data-user-text';
+    const envelopes = bids.length ? bids.map(bid => `<span class="moment-envelope"><span class="moment-bid-name"${nameAttribute(bid.localizeName)}>${escape(bid.name)}</span><strong>${number(bid.bid) > 0 ? money(bid.bid) : '<span>Passed</span>'}</strong></span>`).join('') : '<span class="moment-envelope"></span><span class="moment-envelope"></span><span class="moment-envelope"></span>';
     scene.innerHTML = event === 'settled'
       ? `<span class="moment-coins" aria-hidden="true"><i></i><i></i><i></i></span><div class="moment-copy"><span>Sale settled</span><strong><span>Your result</span> <b>${signed(detail.selfProfit)}</b></strong></div>`
-      : `<div class="moment-envelopes" aria-hidden="true">${envelopes}</div><div class="moment-copy"><span>Sealed bids opened</span>${event === 'hammer' ? `<strong><span class="moment-stamp">SOLD</span> <b>${money(detail.winningBid)}</b></strong><small><span${nameAttribute}>${escape(detail.winnerName)}</span><span class="moment-unveiled">Crate unveiled</span></small><span class="moment-gavel" aria-hidden="true"></span>` : '<strong>No hammer this round</strong>'}</div>`;
+      : `<div class="moment-envelopes" aria-hidden="true">${envelopes}</div><div class="moment-copy"><span>Sealed bids opened</span>${event === 'hammer' ? `<strong><span class="moment-stamp">SOLD</span> <b>${money(detail.winningBid)}</b></strong><small><span${nameAttribute(detail.localizeWinnerName)}>${escape(detail.winnerName)}</span><span class="moment-unveiled">Crate unveiled</span></small><span class="moment-gavel" aria-hidden="true"></span>` : '<strong>No hammer this round</strong>'}</div>`;
     doc.body.appendChild(scene);
     localize(scene);
     liveScene = scene;
@@ -280,5 +280,22 @@
     updateAudioButtons();
     if (liveScene) localize(liveScene);
   });
-  return Object.freeze({sourceMarkup,valuationMarkup,present,bindSoundToggle,bindMusicToggle,get soundEnabled(){return sound;},get musicEnabled(){return musicPlaying;}});
+  // One seat's review of a settled crate: its own top bid against what the opened crate was worth
+  // to it. outcome is 'won', 'sold' (someone else bought), 'unaffordable' or 'unsold'.
+  function bidReviewMarkup(review) {
+    if (!review || !['won', 'sold', 'unaffordable', 'unsold'].includes(review.outcome) || !Number.isFinite(review.price) || !Number.isFinite(review.worth)) return '';
+    const {top = 0, price, worth, outcome} = review;
+    const line = (label, value, tone = '') => `<p><span>${label}</span> <strong class="${tone}" data-no-localize>${value}</strong></p>`;
+    let verdict = '';
+    if (outcome === 'won') {
+      verdict = worth === price ? '<p>You paid exactly what it was worth to you.</p>' : worth > price ? line('Worth more to you than you paid:', signed(worth - price), 'positive') : line('You paid more than it was worth to you:', money(price - worth), 'negative');
+      if (Number.isFinite(review.recovery) && worth > review.recovery) verdict += line('Your best sale would have added:', signed(worth - review.recovery), 'positive');
+    } else if (outcome === 'unaffordable') verdict = line('Your cash was below the hammer price by:', money(price - number(review.cash)), 'negative');
+    else if (outcome === 'sold') verdict = worth >= price
+      ? (worth === price ? '<p>At the hammer price you would have broken even.</p>' : line('At the hammer price you would still have made:', signed(worth - price), 'positive')) + (top > 0 ? line('Your top bid was below the hammer price by:', money(price - top)) : '')
+      : line('Not buying was right. At the hammer price you would have lost:', money(price - worth), 'negative');
+    else if (worth > price) verdict = line('Nobody met the reserve. Buying at the reserve would have made:', signed(worth - price), 'positive');
+    return `<section class="bid-review" aria-label="Your bid review"><h3>Your bid review</h3><dl><div><dt>Your top bid</dt><dd>${top > 0 ? `<span data-no-localize>${money(top)}</span>` : 'Passed every round'}</dd></div><div><dt>${outcome === 'unsold' ? 'Auction-house reserve' : 'Hammer price'}</dt><dd data-no-localize>${money(price)}</dd></div><div><dt title="Ordinary sale plus your best ability use, after fees.">Worth to you</dt><dd data-no-localize>${money(worth)}</dd></div></dl>${verdict}</section>`;
+  }
+  return Object.freeze({sourceMarkup,valuationMarkup,bidReviewMarkup,present,bindSoundToggle,bindMusicToggle,get soundEnabled(){return sound;},get musicEnabled(){return musicPlaying;}});
 });

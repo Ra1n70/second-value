@@ -68,7 +68,7 @@ test('2-4 player adapters record the same public identities only after actual se
     for(const player of room.players){
       const view=R.viewFor(room,player.id),{calls,html}=discovery('room',view);
       assert.equal(calls.length,1);assert.equal(calls[0].active,true);assert.equal(calls[0].phase,'result');
-      assert.equal(calls[0].rulesVersion,6);assert.deepEqual(calls[0].lots.map(item=>item.catalogId),rareIds);
+      assert.equal(calls[0].rulesVersion,7);assert.deepEqual(calls[0].lots.map(item=>item.catalogId),rareIds);
       assert.ok(calls[0].lots.every(item=>item.known===true&&item.source==='Crate opened'));
       assert.equal(html,rareIds.join(','));
     }

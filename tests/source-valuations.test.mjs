@@ -7,6 +7,9 @@ import {readFile} from 'node:fs/promises';
 const require = createRequire(import.meta.url);
 const E = require('../game/engine.cjs');
 const R = require('../game/room-engine.cjs');
+
+// Tables created under the current rules start with this much cash.
+const OPENING = E.startingCashFor(E.RULES_VERSION);
 const clone = value => structuredClone(value);
 const total = items => items.reduce((sum, item) => sum + item.base, 0);
 const item = id => clone(E.ITEMS.find(candidate => candidate.catalogId === id));
@@ -14,6 +17,7 @@ const act = (room, actor, type, fields = {}) => R.applyAction(room, actor, {type
 function readyRoom({rulesVersion = E.RULES_VERSION, hostRole = 'broker', guestRole = 'appraiser'} = {}) {
   const room = R.createRoom({code: 'SOURCE', seed: 42, host: {id: 'host', name: 'Host', role: hostRole, theme: 'harbor'}});
   room.rulesVersion = rulesVersion;
+  room.players[0].cash = E.startingCashFor(rulesVersion);
   R.joinRoom(room, {id: 'guest', name: 'Guest', role: guestRole, theme: 'railway'});
   for (const actor of ['host', 'guest']) act(room, actor, 'ready', {ready: true});
   act(room, 'host', 'start');
@@ -24,7 +28,7 @@ function ordinaryReceipt(items, paid) {
 }
 
 test('source draws are deterministic, distinct, and independent of roles, wealth and computer work', async () => {
-  assert.equal(E.RULES_VERSION, 6);
+  assert.equal(E.RULES_VERSION, 7);
   assert.deepEqual(Object.keys(E.SOURCES), ['workshop', 'estate', 'theater']);
   for (const record of Object.values(E.SOURCES)) assert.deepEqual(Object.keys(record), ['name', 'evidence', 'hint', 'story']);
   for (let seed = 0; seed < 48; seed++) {
@@ -175,7 +179,7 @@ test('rooms expose the source immediately but keep valuation and hidden truth pr
   assert.equal(host.valuation.rows[0].actual, true);
   assert.equal(host.valuation.rows[0].abilityGain, 0);
   assert.equal(host.valuation.rows[0].profit, room.receipt.profit);
-  assert.deepEqual(room.players.map(player => player.cash), [1000 + room.receipt.profit, 1000]);
+  assert.deepEqual(room.players.map(player => player.cash), [OPENING + room.receipt.profit, OPENING]);
   const settled = clone(room);
   assert.throws(() => act(room, 'host', 'sell', {mode: 'ordinary', repairSlots: [], pairSlots: []}));
   assert.deepEqual(room, settled);
@@ -197,7 +201,7 @@ test('room sources stay locked across rounds, all-pass yields no board, and cont
   }
   assert.equal(room.phase, 'result');
   assert.equal(R.viewFor(room, 'host').valuation, null);
-  assert.ok(room.players.every(player => player.cash === 1000));
+  assert.ok(room.players.every(player => player.cash === OPENING));
   for (const actor of ['host', 'guest']) act(room, actor, 'ready', {ready: true});
   act(room, 'host', 'continue');
   assert.equal(room.auctionNumber, 2);
@@ -213,11 +217,11 @@ test('legacy settled rooms reconstruct prior funds including a winner who later 
   act(room, 'host', 'bid', {amount: 800, pass: false});
   act(room, 'guest', 'bid', {amount: null, pass: true});
   act(room, 'host', 'sell', {mode: 'ordinary', repairSlots: [], pairSlots: []});
-  assert.deepEqual(room.valuation.rows.map(row => row.cashBefore), [1000, 1000]);
+  assert.deepEqual(room.valuation.rows.map(row => row.cashBefore), [E.startingCashFor(4), E.startingCashFor(4)]);
   delete room.valuation;
   act(room, 'host', 'leave');
   const view = R.viewFor(room, 'guest');
   assert.equal(view.phase, 'ended');
-  assert.deepEqual(view.valuation.rows.map(row => row.cashBefore), [1000, 1000]);
+  assert.deepEqual(view.valuation.rows.map(row => row.cashBefore), [E.startingCashFor(4), E.startingCashFor(4)]);
   assert.equal(view.valuation.rows.find(row => row.id === 'host').profit, room.receipt.profit);
 });

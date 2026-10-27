@@ -15,7 +15,7 @@ const total = items => items.reduce((sum, candidate) => sum + candidate.base, 0)
 const plan = (role, items, ids, cash = 1000) => E.salePlan(role, items, 'special', cash, { abilityIds: ids });
 
 test('current rules retain the expanded catalog and roles while prior silhouette ranges stay locked', () => {
-  assert.equal(E.RULES_VERSION, 6);
+  assert.equal(E.RULES_VERSION, 7);
   assert.equal(roles.length, 6);
   assert.equal(E.catalogItems(1).length, 18);
   assert.equal(E.catalogItems(2).length, 18);

@@ -596,7 +596,7 @@ test('guided crate copy switches live without changing a draft bid, selected sal
     'Practice cash', 'Your bid', 'Review sealed bid',
     'Nothing has been submitted. You can still return and edit.',
     'Return and edit', 'Confirm and reveal', 'Back to clues',
-    'Enter a whole-number practice bid from 40 to 1,000.', 'Practice rival',
+    'Enter a whole-number practice bid from 40 to 1,500.', 'Practice rival',
     'Your bid wins.', 'Equal bids: your published priority wins.',
     'Your bid did not win. Your practice cash stays unchanged.', 'Try another bid',
     'Compare sale choices', 'Continue to sale choices', 'Compare two sale choices.',
@@ -676,4 +676,94 @@ test('room recovery translates blocked actions while preserving player names and
     assert.equal(clock.textContent, '01:45');
   }
   assert.deepEqual(h.navigation, []);
+});
+
+test('role drills and the five-crate match are translated, with numbers intact, in Chinese and Spanish', async () => {
+  const drills = [
+    'Lessons', 'Full crate', 'Quick drill', 'Quick drill · Collector', 'Quick drill · Curator',
+    'Deliver a matching pair', 'Build a pop-up exhibition', 'Choose objects', 'Check the receipt',
+    'You won this crate. Choose two objects to deliver as a pair.', 'You won this crate. Choose three objects to exhibit.',
+    'Locked theme', 'Bonus cap', 'Exhibition fee', 'Cap per object',
+    'A pair needs two genuine Old Harbor objects from different categories. It earns a quarter of their combined base price, up to 120.',
+    'Exhibit three genuine, intact objects from three different categories. Each earns 20% of its base price, up to 40. The exhibition costs 25.',
+    'Counts toward the pair.', 'Reproductions never count toward a pair.', 'Not an Old Harbor piece. Your theme is locked.',
+    'Same category as your other choice. A pair needs two categories.', 'Reproductions cannot be exhibited.',
+    'Only intact objects can be exhibited.', 'Shares a category with another choice. Use three categories.',
+    'Check this choice', 'Choose a valid practice drill.', 'Remove a choice before adding another.',
+    'Choose exactly two objects.', 'Choose exactly three objects.', 'Some choices do not qualify. Read the note under each one.',
+    'Drill receipt', 'Ordinary sale only', 'You found the best choice in this crate.', 'A better choice was available:',
+    'Best possible profit', 'Try different objects', 'Finish drill',
+    'The pair bonus is a quarter of the two base prices, up to 120. Damaged genuine pieces still count.',
+    'Each exhibit earns 20% of its base price, up to 40. When two objects share a category, exhibit the more valuable one.',
+    // Existing copy the drills reuse, including every drill object and category.
+    'Collector', 'Curator', 'Restorer', 'Collection bonus', 'Exhibition bonus', 'selected', 'Old Harbor', 'Railway',
+    'Genuine', 'Reproduction', 'Intact', 'Damaged', 'mechanical', 'ceramic', 'insignia', 'imaging', 'document',
+    'Old Harbor mantel clock', 'Harbor crew badge', 'Naval service badge', 'Replica shipping badge', 'Original harbor survey',
+    'Original railway map', 'Studio rangefinder', 'Hand-painted tea cup', 'First mate’s enamel cup', 'Replica folding camera',
+  ];
+  const match = [
+    'Match length', 'Free play', 'Five crates', 'Keep opening crates until the host finishes.', 'Final standings after crate 5.',
+    'Changing the length asks other players to get ready again.', 'Five-crate match', 'Five-crate match complete. Highest cash wins.',
+    'Crates left', 'The next crate is the last one.', 'Open the final crate', 'The five-crate match is complete.',
+    'Choose a valid match length.', 'Auction 3 / 5',
+    'Your ability can add value here', 'Select them under “Use my role ability”. Nothing is selected automatically.',
+    'Crate value', 'Ordinary sale value, before abilities', 'Your ability can add more after you win.', 'You paid exactly what it was worth to you.', 'At the hammer price you would have broken even.', 'Estimated from the reserve (8–12% of this value), each object’s catalog range and the announced counts.', 'Estimated from each object’s catalog range and the announced counts.', 'Your cash was below the hammer price by:', 'Last crate: the value at this table', 'Not possible in this crate: an exhibition needs three genuine, intact objects from different categories.', 'Not possible in this crate: it cannot hold two genuine objects in your theme from different categories.', 'Not possible in this crate: nothing in it can be repaired.', 'Not possible in this crate: every object is genuine.', 'Not possible in this crate: there is no genuine, intact object for your customer.', 'Your bid review', 'Your top bid',
+    'Passed every round', 'Worth to you', 'Ordinary sale plus your best ability use, after fees.', 'Worth more to you than you paid:',
+    'You paid more than it was worth to you:', 'Your best sale would have added:', 'At the hammer price you would still have made:',
+    'Your top bid was below the hammer price by:', 'Not buying was right. At the hammer price you would have lost:',
+    'Nobody met the reserve. Buying at the reserve would have made:', 'Hammer price', 'Auction-house reserve',
+    'In the lobby, the host chooses free play or a five-crate match. A five-crate match ends with final standings after crate 5.',
+  ];
+  for (const online of [false, true]) {
+    const h = await localeHarness({ online });
+    for (const language of ['zh-CN', 'es']) {
+      h.base.setLanguage(language);
+      for (const source of online ? [...drills, ...match] : drills) {
+        const output = h.locale.translate(source);
+        assert.notEqual(output, source, `${online}: ${language}: ${source}`);
+        if (language === 'es') assert.doesNotMatch(output, /[㐀-鿿]/, source);
+        assertNumbersPreserved(source, output);
+      }
+    }
+    if (online) {
+      h.base.setLanguage('zh-CN'); assert.equal(h.locale.translate('Auction 3 / 5'), '第 3 / 5 箱');
+      h.base.setLanguage('es'); assert.equal(h.locale.translate('Auction 3 / 5'), 'Subasta 3 / 5');
+    }
+  }
+});
+
+test('room computer names follow the language while their seat number stays', async () => {
+  const h = await localeHarness({ online: true });
+  for (const [language, expected] of [['zh-CN', ['马洛 1', '芬奇 2', '维尔 13']], ['es', ['Marlow 1', 'Finch 2', 'Vale 13']], ['en', ['Marlow 1', 'Finch 2', 'Vale 13']]]) {
+    h.base.setLanguage(language);
+    assert.deepEqual(['Marlow 1', 'Finch 2', 'Vale 13'].map(name => h.locale.translate(name)), expected);
+    assert.equal(h.locale.translate('Marlowe 1'), 'Marlowe 1');
+  }
+  for (const [language, source] of [['zh-CN', 'You can leave now, or stay for the next crate.'], ['es', 'You can leave now, or stay for the next crate.'], ['zh-CN', 'Return and edit'], ['es', 'Return and edit'], ['zh-CN', 'Previous bids are not charges or minimums. You may raise, lower, or skip your next bid.'], ['es', 'Previous bids are not charges or minimums. You may raise, lower, or skip your next bid.']]) {
+    h.base.setLanguage(language);
+    assert.notEqual(h.locale.translate(source), source, `${language}: ${source}`);
+  }
+  const solo = await localeHarness();
+  for (const language of ['zh-CN', 'es']) {
+    solo.base.setLanguage(language);
+    assert.notEqual(solo.locale.translate('Confirming reveals all bids immediately.'), 'Confirming reveals all bids immediately.');
+  }
+});
+
+test('solo practice translates the thinking seat, value chip and bid review', async () => {
+  const sources = ['You paid exactly what it was worth to you.', 'At the hammer price you would have broken even.', 'Enter a whole-number practice bid from 40 to 1,500.', 'Deciding', 'Sealed bid', 'Hammer price', 'Auction-house reserve', 'Crate value', 'Ordinary sale value, before abilities',
+    'Your ability can add more after you win.', 'You paid exactly what it was worth to you.', 'At the hammer price you would have broken even.', 'Estimated from the reserve (8–12% of this value), each object’s catalog range and the announced counts.', 'Estimated from each object’s catalog range and the announced counts.', 'Your cash was below the hammer price by:', 'Last crate: the value at this table', 'Not possible in this crate: an exhibition needs three genuine, intact objects from different categories.', 'Not possible in this crate: it cannot hold two genuine objects in your theme from different categories.', 'Not possible in this crate: nothing in it can be repaired.', 'Not possible in this crate: every object is genuine.', 'Not possible in this crate: there is no genuine, intact object for your customer.', 'Your bid review', 'Your top bid', 'Passed every round', 'Worth to you',
+    'Ordinary sale plus your best ability use, after fees.', 'Worth more to you than you paid:', 'You paid more than it was worth to you:',
+    'Your best sale would have added:', 'At the hammer price you would still have made:', 'Your top bid was below the hammer price by:',
+    'Not buying was right. At the hammer price you would have lost:', 'Nobody met the reserve. Buying at the reserve would have made:'];
+  const h = await localeHarness();
+  for (const language of ['zh-CN', 'es']) {
+    h.base.setLanguage(language);
+    for (const source of sources) {
+      const output = h.locale.translate(source);
+      assert.notEqual(output, source, `${language}: ${source}`);
+      if (language === 'es') assert.doesNotMatch(output, /[㐀-鿿]/, source);
+      assertNumbersPreserved(source, output);
+    }
+  }
 });

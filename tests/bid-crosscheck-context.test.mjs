@@ -31,7 +31,7 @@ test('actual 2/3/4-seat adapters cannot copy another seat private identities or 
  }
 });
 function acceptContext(view,turnId){
- const ctx={state:{credentials:{code:view.code},view,draftTurn:view.turnId,saleTurn:null,selected:0,bidOpen:false},pendingReview:{type:'bid',turnId,amount:400,pass:false},presenceAnchor:null,lastRoomUpdate:0,performance:{now:()=>0},minimumBid:v=>Math.max(1,v.reservePrice),persist(){},render(){},updateRecoveryClocks(){},Recovery:{stableSignature:v=>JSON.stringify(v)}};
+ const ctx={state:{credentials:{code:view.code},view,draftTurn:view.turnId,saleTurn:null,selected:0,bidOpen:false},pendingReview:{type:'bid',turnId,amount:400,pass:false},presenceAnchor:null,lastRoomUpdate:0,performance:{now:()=>0},thinking:{turn:null,start:0},minimumBid:v=>Math.max(1,v.reservePrice),persist(){},render(){},updateRecoveryClocks(){},Recovery:{stableSignature:v=>JSON.stringify(v)}};
  ctx.review={open:true,close(){this.open=false;ctx.pendingReview=null;}};return ctx;
 }
 test('skipped intermediate view cannot leave a stale confirmation open in a later auction turn',()=>{

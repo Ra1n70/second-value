@@ -5,6 +5,9 @@ import {createRequire} from 'node:module';
 const require = createRequire(import.meta.url);
 const E = require('../game/engine.cjs');
 const R = require('../game/room-engine.cjs');
+
+// Tables created under the current rules start with this much cash.
+const OPENING = E.startingCashFor(E.RULES_VERSION);
 const baseValue = items => items.reduce((sum, item) => sum + item.base, 0);
 const clone = value => structuredClone(value);
 const command = (room, actor, type, fields = {}) => R.applyAction(room, actor, {type, turnId: room.turnId, ...fields});
@@ -90,13 +93,13 @@ test('multiplayer exposes only its public reserve, rejects low bids and supports
   assert.deepEqual(room, before);
   command(room, 'host', 'bid', {amount: room.reservePrice, pass: false});
   assert.equal(R.viewFor(room, 'guest').players[0].submitted, true);
-  assert.equal(room.players[0].cash, 1000);
+  assert.equal(room.players[0].cash, OPENING);
   command(room, 'host', 'withdraw');
   assert.equal(room.players[0].bid, null);
   command(room, 'host', 'bid', {amount: room.reservePrice, pass: false});
   command(room, 'guest', 'bid', {amount: null, pass: true});
   assert.equal(room.winningBid, room.reservePrice);
-  assert.equal(room.players[0].cash, 1000 - room.reservePrice);
+  assert.equal(room.players[0].cash, OPENING - room.reservePrice);
 });
 
 test('all-pass keeps the reserve through three rounds, charges nobody and generates a fresh bounded crate', () => {
@@ -107,7 +110,7 @@ test('all-pass keeps the reserve through three rounds, charges nobody and genera
     assert.equal(room.reservePrice, reserve);
     for (const actor of ['host', 'guest']) command(room, actor, 'bid', {amount: null, pass: true});
     assert.equal(room.winnerId, null);
-    assert.ok(room.players.every(player => player.cash === 1000));
+    assert.ok(room.players.every(player => player.cash === OPENING));
     if (round < 3) command(room, 'host', 'next');
   }
   assert.equal(room.phase, 'result');

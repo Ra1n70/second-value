@@ -5,6 +5,9 @@ import {createRequire} from 'node:module';
 const require = createRequire(import.meta.url);
 const E = require('../game/engine.cjs');
 const R = require('../game/room-engine.cjs');
+
+// Tables created under the current rules start with this much cash.
+const OPENING = E.startingCashFor(E.RULES_VERSION);
 const B = require('../game/room-bots.cjs');
 const command = (room, actor, type, fields = {}) => R.applyAction(room, actor, {type, turnId: room.turnId, ...fields});
 const computers = room => room.players.filter(player => player.active && player.isBot);
@@ -50,7 +53,7 @@ test('host adds and removes ready computers within the four-seat lobby limit; re
   }
   const first = add(room, 'steady');
   assert.equal(first.ready, true);
-  assert.equal(first.cash, E.STARTING_CASH);
+  assert.equal(first.cash, OPENING);
   const firstId = first.id;
   const second = add(room, 'bold');
   assert.equal(room.players.length, 4);
@@ -93,7 +96,7 @@ test('2–4 seat tables preseal computer decisions while preserving the human co
     }
     assert.ok(view.lots.every(lot => !lot.known));
     const balances = room.players.map(player => player.cash);
-    assert.deepEqual(balances, new Array(seats).fill(E.STARTING_CASH));
+    assert.deepEqual(balances, new Array(seats).fill(OPENING));
     command(room, 'host', 'bid', {amount: null, pass: true});
     assert.equal(room.history.length, 1, 'the final human confirmation reveals exactly once');
     assert.notEqual(room.phase, 'auction');
@@ -204,10 +207,10 @@ test('2–4 seat computer sessions carry balances across five crates with one le
       passToResult(room);
       assert.equal(room.ledger.length, auction);
       assert.equal(new Set(room.ledger.map(entry => entry.auctionNumber)).size, auction);
-      assert.equal(room.players.find(player => player.id === 'host').cash, E.STARTING_CASH);
+      assert.equal(room.players.find(player => player.id === 'host').cash, OPENING);
       for (const player of room.players) {
         assert.ok(Number.isSafeInteger(player.cash) && player.cash >= 0);
-        assert.equal(player.profit, player.cash - E.STARTING_CASH);
+        assert.equal(player.profit, player.cash - OPENING);
         assert.equal(player.cash, balances.get(player.id) + (room.winnerId === player.id ? room.receipt.profit : 0));
         if (player.isBot) assert.equal(player.ready, true);
       }
@@ -215,9 +218,9 @@ test('2–4 seat computer sessions carry balances across five crates with one le
       assert.throws(() => R.applyAction(room, 'host', {type: 'bid', amount: null, pass: true, turnId}));
       assert.deepEqual(room, after);
       if (auction < 5) {
-        assert.equal(R.viewFor(room, 'host').can.continue, false);
-        command(room, 'host', 'ready', {ready: true});
+        // A lone human host opens the next crate directly; readying first still works.
         assert.equal(R.viewFor(room, 'host').can.continue, true);
+        if (auction % 2) command(room, 'host', 'ready', {ready: true});
         command(room, 'host', 'continue');
         assert.equal(room.phase, 'auction');
         assert.equal(room.history.length, 0);
@@ -302,4 +305,20 @@ test('computer bid decisions are deterministic, budget bounded, style dependent 
   patient.self.botStyle = 'patient'; patient.round = 2;
   patient.history = [{bids: [{id: 'host', bid: 10000}]}];
   assert.deepEqual(B.chooseBid(patient), {amount: null, pass: true}, 'patient computer can sit out an expensive public contest');
+});
+
+test('only a lone human host skips the ready step; other humans must still ready up', () => {
+  const room = lobby();
+  add(room);
+  R.joinRoom(room, {id: 'guest', name: 'Guest', role: 'appraiser'});
+  for (const id of ['host', 'guest']) command(room, id, 'ready', {ready: true});
+  command(room, 'host', 'start');
+  passToResult(room);
+  assert.equal(R.viewFor(room, 'host').can.continue, false);
+  rejected(room, 'host', 'continue');
+  command(room, 'guest', 'ready', {ready: true});
+  rejected(room, 'host', 'continue');
+  command(room, 'host', 'ready', {ready: true});
+  command(room, 'host', 'continue');
+  assert.equal(room.auctionNumber, 2);
 });

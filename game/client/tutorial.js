@@ -8,28 +8,40 @@
   const COMPLETE_KEY = 'secondvalue:tutorial-complete';
   const ITEM_IDS = ['harbor-clock','replica-cup','crew-badge','toy-camera','prop-radio','map-print'];
   const STEPS = ['Read clues','Seal a bid','Reveal the crate','Choose a sale'];
+  const DRILL_STEPS = ['Choose objects','Check the receipt'];
+  const LESSONS = {restorer:['Restorer','Full crate'],collector:['Collector','Quick drill'],curator:['Curator','Quick drill']};
+  // Revealed practice crates for the abilities the guided crate does not teach.
+  // Each has one best answer plus a reproduction, an ineligible object and a shared category to catch.
+  const DRILLS = {
+    collector:{ids:['harbor-clock','crew-badge','navy-badge','replica-badge','harbor-map','railway-map'],winningBid:760,limit:2,theme:'harbor'},
+    curator:{ids:['studio-camera','tea-cup','sailor-cup','harbor-clock','replica-camera','crew-badge'],winningBid:900,limit:3}
+  };
   const bound = new WeakSet();
   const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const money = value => Number(value).toLocaleString('en-US');
   const signed = value => (value > 0 ? '+' : value < 0 ? '−' : '') + money(Math.abs(value));
-  let dialog = null, practice = null, error = '', previousFocus = null;
+  let dialog = null, practice = null, drills = null, lesson = 'restorer', error = '', previousFocus = null;
 
-  function createPractice(engine) {
-    if (!engine?.catalogItems || !engine?.salePlan || !engine?.resolveRound) throw new Error('The practice engine is unavailable.');
+  function practiceItems(engine,ids) {
     const catalog = engine.catalogItems();
-    const items = ITEM_IDS.map(id => {
+    return ids.map(id => {
       const item = catalog.find(candidate => candidate.catalogId === id);
       if (!item) throw new Error('The practice catalog is unavailable.');
       return {...item,id:`tutorial:${id}`,repair:item.repair ? {...item.repair} : undefined};
     });
+  }
+  function createPractice(engine) {
+    if (!engine?.catalogItems || !engine?.salePlan || !engine?.resolveRound) throw new Error('The practice engine is unavailable.');
+    const items = practiceItems(engine,ITEM_IDS);
     const base = items.reduce((sum,item)=>sum+item.base,0);
-    const reserve = Math.round(base / 10), startingCash = 1000, rivalBid = 300;
+    // Practice cash matches the opening cash of a table under the current rules.
+    const reserve = Math.round(base / 10), startingCash = engine.startingCashFor?.(engine.RULES_VERSION) ?? 1000, rivalBid = 300;
     let state;
     function reset() { state={stage:0,selected:null,draft:'350',review:false,bid:null,won:null,winningBid:null,mode:'ordinary',receipt:null}; }
     reset();
     function validBid() {
       const text=String(state.draft).trim(), amount=Number(text);
-      if (!/^\d+$/.test(text) || !Number.isSafeInteger(amount) || amount<reserve || amount>startingCash) throw new Error('Enter a whole-number practice bid from 40 to 1,000.');
+      if (!/^\d+$/.test(text) || !Number.isSafeInteger(amount) || amount<reserve || amount>startingCash) throw new Error(`Enter a whole-number practice bid from ${money(reserve)} to ${money(startingCash)}.`);
       return amount;
     }
     function plan(mode=state.mode) {
@@ -69,6 +81,50 @@
     }
     return Object.freeze({act,plan,get state(){return JSON.parse(JSON.stringify(state));},get items(){return items.map(item=>({...item,repair:item.repair?{...item.repair}:undefined}));},base,reserve,startingCash,rivalBid});
   }
+  function createDrill(engine,role) {
+    if (!engine?.catalogItems || !engine?.salePlan) throw new Error('The practice engine is unavailable.');
+    if (!Object.hasOwn(DRILLS,role)) throw new Error('Choose a valid practice drill.');
+    const drill = DRILLS[role], items = practiceItems(engine,drill.ids), collector = role === 'collector';
+    const base = items.reduce((sum,item)=>sum+item.base,0), startingCash = engine.startingCashFor?.(engine.RULES_VERSION) ?? 1000, winningBid = drill.winningBid, cash = startingCash - winningBid;
+    const options = ids => collector ? {theme:drill.theme,...(ids ? {pairIds:ids} : {})} : ids ? {abilityIds:ids} : {};
+    let state;
+    function reset() { state={stage:0,selected:[],receipt:null}; }
+    reset();
+    function notes() {
+      const first = state.selected.map(index => {
+        const item = items[index];
+        const reason = !item.genuine ? (collector ? 'Reproductions never count toward a pair.' : 'Reproductions cannot be exhibited.')
+          : collector ? (item.theme !== drill.theme ? 'Not an Old Harbor piece. Your theme is locked.' : null)
+          : item.condition !== 'intact' ? 'Only intact objects can be exhibited.' : null;
+        return {index,item,reason};
+      });
+      return first.map(({index,item,reason}) => {
+        if (!reason && first.some(other => other.index !== index && !other.reason && other.item.category === item.category)) reason = collector ? 'Same category as your other choice. A pair needs two categories.' : 'Shares a category with another choice. Use three categories.';
+        return {index,ok:!reason,reason,bonus:!reason && !collector ? Math.min(40,Math.floor(item.base/5)) : 0};
+      });
+    }
+    function act(action,value) {
+      if (action==='reset') {reset();return;}
+      if (action==='pick' && state.stage===0) {
+        if (!Number.isInteger(value)||value<0||value>=items.length) throw new Error('Choose a valid practice object.');
+        if (state.selected.includes(value)) {state.selected=state.selected.filter(index=>index!==value);return;}
+        if (state.selected.length>=drill.limit) throw new Error('Remove a choice before adding another.');
+        state.selected=[...state.selected,value];return;
+      }
+      if (action==='check' && state.stage===0) {
+        if (state.selected.length!==drill.limit) throw new Error(collector ? 'Choose exactly two objects.' : 'Choose exactly three objects.');
+        if (notes().some(note=>!note.ok)) throw new Error('Some choices do not qualify. Read the note under each one.');
+        const plan = engine.salePlan(role,items,'special',cash,options(state.selected.map(index=>items[index].id)));
+        // The engine's own search finds the best answer, so the drill never hard-codes a solution.
+        const best = engine.salePlan(role,items,'special',cash,options());
+        state.receipt={sale:plan.sale,bonus:plan.bonus,cost:plan.cost,recovery:plan.recovery,profit:plan.recovery-winningBid,ordinaryProfit:base-winningBid,bestProfit:best.recovery-winningBid,best:(collector?best.pair:best.ability).map(id=>items.findIndex(item=>item.id===id)),cash:cash+plan.recovery};
+        state.stage=1;return;
+      }
+      if (action==='retry' && state.stage===1) {state.stage=0;state.receipt=null;return;}
+      throw new Error('That practice action is unavailable at this step.');
+    }
+    return Object.freeze({act,notes,role,limit:drill.limit,base,startingCash,winningBid,get state(){return JSON.parse(JSON.stringify(state));},get items(){return items.map(item=>({...item,repair:item.repair?{...item.repair}:undefined}));}});
+  }
 
   function buttonMarkup() {return '<button type="button" class="tutorial-entry" data-open-tutorial>Learn in one crate</button>';}
   function localize(node) {(root.SecondValueOnlineLocale || root.SecondValueLocale)?.localize?.(node);}
@@ -97,10 +153,36 @@
     if(receipt)return `<h3>${receipt.comparison?'Hypothetical comparison':'Practice receipt'}</h3>${receipt.comparison?'<p class="tutorial-task-note">You are comparing the scripted winner\'s crate. This does not change your cash.</p>':''}<dl class="tutorial-receipt"><div><dt>Winning bid</dt><dd>−${money(receipt.winningBid)}</dd></div><div><dt>Sale proceeds</dt><dd>+${money(receipt.sale)}</dd></div><div><dt>Repair fee</dt><dd>−${money(receipt.cost)}</dd></div><div class="tutorial-receipt-total"><dt>Profit after bid and fees</dt><dd class="${receipt.profit<0?'is-loss':'is-gain'}">${signed(receipt.profit)}</dd></div><div><dt>Your practice cash</dt><dd>${money(receipt.cash)}</dd></div></dl><p class="tutorial-takeaway">A better repair cannot make every purchase profitable.</p>${controls('<button type="button" data-tutorial-action="reset">Replay this crate</button><button type="button" class="primary" data-tutorial-action="finish">Finish tutorial</button>')}`;
     return `<h3>Compare two sale choices.</h3>${!state.won?'<p class="tutorial-task-note">You are comparing the scripted winner\'s crate. This does not change your cash.</p>':'<p class="tutorial-task-note">Choose a sale, then check the full receipt.</p>'}<div class="tutorial-sale-options"><button type="button" data-tutorial-mode="ordinary" aria-pressed="${state.mode==='ordinary'}"><strong>Ordinary sale</strong><span><span>Sale after fees</span><b>${money(ordinary.recovery)}</b></span><span><span>Processing fees</span><b>0</b></span></button><button type="button" data-tutorial-mode="special" aria-pressed="${state.mode==='special'}"><strong>Repair the clock</strong><span><span>Sale after fees</span><b>${money(repair.recovery)}</b></span><span><span>Repair fee</span><b>${money(repair.cost)}</b></span></button></div><div class="tutorial-repair-explainer">${art(practice.items[0],true)}<div><strong>Old Harbor mantel clock</strong><dl><div><dt>Ordinary sale</dt><dd>${money(practice.items[0].base)}</dd></div><div><dt>Repair sale price</dt><dd>${money(practice.items[0].repair.sale)}</dd></div><div><dt>Repair fee</dt><dd>${money(practice.items[0].repair.cost)}</dd></div><div><dt>Net gain vs ordinary sale</dt><dd>${signed(repair.recovery-ordinary.recovery)}</dd></div></dl></div></div><div class="tutorial-value"><span>Profit at this price</span><strong class="${plan.recovery-state.winningBid<0?'is-loss':'is-gain'}">${signed(plan.recovery-state.winningBid)}</strong></div>${controls(`<button type="button" class="text-button" data-tutorial-action="back">Back to reveal</button><button type="button" class="primary" data-tutorial-action="settle">${state.won?'Confirm practice sale':'Finish comparison'}</button>`)}`;
   }
+  function lessonsMarkup() {
+    return `<nav class="tutorial-lessons" aria-label="Lessons">${Object.entries(LESSONS).map(([id,[role,kind]])=>`<button type="button" data-tutorial-lesson="${id}" aria-pressed="${lesson===id}"><b>${role}</b><span>${kind}</span></button>`).join('')}</nav>`;
+  }
+  function drillTags(item) {
+    return `<span class="tutorial-drill-tags"><span>${item.genuine?'Genuine':'Reproduction'}</span><span>${({intact:'Intact',damaged:'Damaged',unrepairable:'Unrepairable'})[item.condition]}</span><span class="tutorial-drill-category">${item.category}</span><span>${root.SecondValue.THEMES[item.theme]||'No collection theme'}</span></span>`;
+  }
+  function drillMarkup(drill,state) {
+    const items=drill.items,collector=drill.role==='collector';
+    if(state.receipt)return drillReceiptMarkup(drill,state.receipt,items);
+    const notes=new Map(drill.notes().map(note=>[note.index,note])),full=state.selected.length>=drill.limit;
+    const facts=collector?`<div><span>Winning bid</span><strong>${money(drill.winningBid)}</strong></div><div><span>Locked theme</span><strong>Old Harbor</strong></div><div><span>Bonus cap</span><strong>120</strong></div>`:`<div><span>Winning bid</span><strong>${money(drill.winningBid)}</strong></div><div><span>Exhibition fee</span><strong>25</strong></div><div><span>Cap per object</span><strong>40</strong></div>`;
+    const cards=items.map((item,index)=>{
+      const note=notes.get(index),picked=Boolean(note);
+      const feedback=note?`<p class="tutorial-drill-note"><span aria-hidden="true">${note.ok?'✓':'✗'}</span> ${note.ok?(collector?'<span>Counts toward the pair.</span>':`<span>Exhibition bonus</span> <b>+${note.bonus}</b>`):`<span>${note.reason}</span>`}</p>`:'';
+      return `<div class="tutorial-drill-card ${note?(note.ok?'is-ok':'is-problem'):''}"><button type="button" data-tutorial-pick="${index}" aria-pressed="${picked}" ${full&&!picked?'disabled':''}><span class="tutorial-drill-art"><span class="tutorial-object-letter" data-no-localize>${String.fromCharCode(65+index)}</span>${art(item,true)}</span><span class="tutorial-drill-copy"><strong>${item.name}</strong>${drillTags(item)}<span class="tutorial-drill-base"><span>Base price</span> <b>${money(item.base)}</b></span></span></button>${feedback}</div>`;
+    }).join('');
+    return `<h3>${collector?'You won this crate. Choose two objects to deliver as a pair.':'You won this crate. Choose three objects to exhibit.'}</h3><div class="tutorial-facts">${facts}</div><p class="tutorial-task-note">${collector?'A pair needs two genuine Old Harbor objects from different categories. It earns a quarter of their combined base price, up to 120.':'Exhibit three genuine, intact objects from three different categories. Each earns 20% of its base price, up to 40. The exhibition costs 25.'}</p><div class="tutorial-drill-objects">${cards}</div>${controls(`<p class="tutorial-drill-count"><span>${state.selected.length} / ${drill.limit}</span> <span>selected</span></p><button type="button" class="primary" data-tutorial-action="check" ${state.selected.length===drill.limit?'':'disabled'}>Check this choice</button>`)}`;
+  }
+  function drillReceiptMarkup(drill,receipt,items) {
+    const collector=drill.role==='collector';
+    const verdict=receipt.profit===receipt.bestProfit?'<p class="tutorial-drill-verdict is-best">You found the best choice in this crate.</p>':`<div class="tutorial-drill-verdict"><p>A better choice was available:</p><ul>${receipt.best.map(index=>`<li>${items[index].name}</li>`).join('')}</ul><p><span>Best possible profit</span> <b>${signed(receipt.bestProfit)}</b></p></div>`;
+    return `<h3>Drill receipt</h3><dl class="tutorial-receipt"><div><dt>Winning bid</dt><dd>−${money(drill.winningBid)}</dd></div><div><dt>Sale proceeds</dt><dd>+${money(receipt.sale)}</dd></div><div><dt>${collector?'Collection bonus':'Exhibition bonus'}</dt><dd>+${money(receipt.bonus)}</dd></div>${receipt.cost?`<div><dt>Exhibition fee</dt><dd>−${money(receipt.cost)}</dd></div>`:''}<div class="tutorial-receipt-total"><dt>Profit after bid and fees</dt><dd class="${receipt.profit<0?'is-loss':'is-gain'}">${signed(receipt.profit)}</dd></div><div><dt>Ordinary sale only</dt><dd>${signed(receipt.ordinaryProfit)}</dd></div><div><dt>Your practice cash</dt><dd>${money(receipt.cash)}</dd></div></dl>${verdict}<p class="tutorial-takeaway">${collector?'The pair bonus is a quarter of the two base prices, up to 120. Damaged genuine pieces still count.':'Each exhibit earns 20% of its base price, up to 40. When two objects share a category, exhibit the more valuable one.'}</p>${controls('<button type="button" data-tutorial-action="retry">Try different objects</button><button type="button" class="primary" data-tutorial-action="finish">Finish drill</button>')}`;
+  }
+  function current() {return lesson==='restorer'?practice:drills[lesson];}
   function render() {
     if(!dialog || !practice)return;
-    const state=practice.state, language=root.SecondValueLocale?.language || 'en';
-    dialog.innerHTML=`<div class="tutorial-header"><div><span class="tutorial-kicker">Practice example · Restorer</span><h2 id="tutorial-title">One guided crate</h2></div><div class="tutorial-header-tools"><label class="tutorial-language" data-no-localize><select aria-label="Language / 语言 / Idioma" data-tutorial-language><option value="en" ${language==='en'?'selected':''}>English</option><option value="zh-CN" ${language==='zh-CN'?'selected':''}>中文</option><option value="es" ${language==='es'?'selected':''}>Español</option></select></label><button type="button" class="text-button" data-tutorial-action="close" aria-label="Close tutorial">Close</button></div></div><p class="tutorial-isolation">Scripted bids. Your real games and cash are untouched.</p><ol class="tutorial-steps">${STEPS.map((step,index)=>`<li class="${index===state.stage?'is-current':index<state.stage?'is-complete':''}" ${index===state.stage?'aria-current="step"':''}><span aria-hidden="true">${index+1}</span><b>${step}</b></li>`).join('')}</ol><section class="tutorial-body">${error?`<p class="tutorial-error" role="alert">${escape(error)}</p>`:''}${[inspectMarkup,biddingMarkup,revealMarkup,saleMarkup][state.stage](state)}</section><footer class="tutorial-footer"><span>This is an isolated lesson. Closing it leaves your real auction exactly as it was.</span><button type="button" class="text-button" data-tutorial-action="reset">Start again</button></footer>`;
+    const drill=lesson==='restorer'?null:drills[lesson],state=current().state,steps=drill?DRILL_STEPS:STEPS,language=root.SecondValueLocale?.language || 'en';
+    const kicker=drill?(lesson==='collector'?'Quick drill · Collector':'Quick drill · Curator'):'Practice example · Restorer';
+    const title=drill?(lesson==='collector'?'Deliver a matching pair':'Build a pop-up exhibition'):'One guided crate';
+    dialog.innerHTML=`<div class="tutorial-header"><div><span class="tutorial-kicker">${kicker}</span><h2 id="tutorial-title">${title}</h2></div><div class="tutorial-header-tools"><label class="tutorial-language" data-no-localize><select aria-label="Language / 语言 / Idioma" data-tutorial-language><option value="en" ${language==='en'?'selected':''}>English</option><option value="zh-CN" ${language==='zh-CN'?'selected':''}>中文</option><option value="es" ${language==='es'?'selected':''}>Español</option></select></label><button type="button" class="text-button" data-tutorial-action="close" aria-label="Close tutorial">Close</button></div></div><p class="tutorial-isolation">Scripted bids. Your real games and cash are untouched.</p>${lessonsMarkup()}<ol class="tutorial-steps">${steps.map((step,index)=>`<li class="${index===state.stage?'is-current':index<state.stage?'is-complete':''}" ${index===state.stage?'aria-current="step"':''}><span aria-hidden="true">${index+1}</span><b>${step}</b></li>`).join('')}</ol><section class="tutorial-body">${error?`<p class="tutorial-error" role="alert">${escape(error)}</p>`:''}${drill?drillMarkup(drill,state):[inspectMarkup,biddingMarkup,revealMarkup,saleMarkup][state.stage](state)}</section><footer class="tutorial-footer"><span>This is an isolated lesson. Closing it leaves your real auction exactly as it was.</span><button type="button" class="text-button" data-tutorial-action="reset">Start again</button></footer>`;
     localize(dialog);
   }
   function close() {
@@ -111,14 +193,20 @@
   function dispatch(action,value) {
     if(action==='close'){close();return;}
     if(action==='finish') {
-      if(!practice.state.receipt)return;
-      try {root.localStorage?.setItem(COMPLETE_KEY,'true');}catch {/* Completion is optional. */}
+      if(!current().state.receipt)return;
+      // Only the guided crate records completion; the drills are repeatable extras.
+      if(lesson==='restorer') {try {root.localStorage?.setItem(COMPLETE_KEY,'true');}catch {/* Completion is optional. */}}
       close();return;
     }
     error='';
-    try {practice.act(action,value);}catch(problem){error=problem.message;}
+    if(action==='lesson') {
+      if(Object.hasOwn(LESSONS,value))lesson=value;
+      render();dialog.querySelector(`[data-tutorial-lesson="${lesson}"]`)?.focus();return;
+    }
+    try {current().act(action,value);}catch(problem){error=problem.message;}
     render();
     if(action==='edit' || (action==='review' && error))dialog.querySelector('#tutorial-bid')?.focus();
+    if(action==='pick')dialog.querySelector(`[data-tutorial-pick="${value}"]`)?.focus();
   }
   function open() {
     const doc=root.document;
@@ -131,9 +219,11 @@
     if(!dialog) {
       dialog=doc.createElement('dialog');dialog.className='tutorial-dialog';dialog.id='secondvalue-tutorial';dialog.setAttribute('aria-labelledby','tutorial-title');
       dialog.addEventListener('click',event=>{
-        const selected=event.target.closest?.('[data-tutorial-select]'),mode=event.target.closest?.('[data-tutorial-mode]'),action=event.target.closest?.('[data-tutorial-action]');
+        const selected=event.target.closest?.('[data-tutorial-select]'),pick=event.target.closest?.('[data-tutorial-pick]'),mode=event.target.closest?.('[data-tutorial-mode]'),lessonButton=event.target.closest?.('[data-tutorial-lesson]'),action=event.target.closest?.('[data-tutorial-action]');
         if(selected)dispatch('select',Number(selected.dataset.tutorialSelect));
+        else if(pick)dispatch('pick',Number(pick.dataset.tutorialPick));
         else if(mode)dispatch('mode',mode.dataset.tutorialMode);
+        else if(lessonButton)dispatch('lesson',lessonButton.dataset.tutorialLesson);
         else if(action)dispatch(action.dataset.tutorialAction);
       });
       dialog.addEventListener('input',event=>{if(event.target.id==='tutorial-bid')practice.act('draft',event.target.value);});
@@ -141,8 +231,8 @@
       dialog.addEventListener('change',event=>{if(event.target.matches?.('[data-tutorial-language]'))root.SecondValueLocale?.setLanguage?.(event.target.value);});
       doc.body.appendChild(dialog);
     }
-    // Each opening is a clean four-step example, never a real-game restore.
-    practice=createPractice(root.SecondValue);error='';render();
+    // Each opening starts every lesson clean, never as a real-game restore.
+    practice=createPractice(root.SecondValue);drills={collector:createDrill(root.SecondValue,'collector'),curator:createDrill(root.SecondValue,'curator')};lesson='restorer';error='';render();
     if(!dialog.open) {if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');}
   }
   function bind(container) {
@@ -156,5 +246,5 @@
     if(selector)selector.value=root.SecondValueLocale?.language || 'en';
     localize(dialog);
   });
-  return Object.freeze({buttonMarkup,bind,createPractice});
+  return Object.freeze({buttonMarkup,bind,createPractice,createDrill});
 });

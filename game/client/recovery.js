@@ -8,7 +8,20 @@
   function stableSignature(view) {
     if (!view) return JSON.stringify(view);
     const {serverNow, ...stable} = view;
+    // This capability changes when the server clock reaches a fixed deadline.
+    // Updating its existing controls does not require replacing game inputs.
+    if (stable.can && Object.hasOwn(stable.can,'endStalled')) {
+      const {endStalled, ...can} = stable.can;
+      stable.can = can;
+    }
     return JSON.stringify(stable);
+  }
+  function stalled(view) {
+    const self = view?.players?.find(player => player.id === view.selfId);
+    const availableAt = Number.isFinite(view?.recovery?.availableAt) ? view.recovery.availableAt : null;
+    const blockers = Array.isArray(view?.recovery?.blockingPlayerIds) ? view.recovery.blockingPlayerIds.filter(id => typeof id === 'string') : [];
+    const visible = Boolean(view && view.phase !== 'ended' && self && self.active !== false && !self.isBot && availableAt !== null && blockers.length);
+    return {visible,availableAt,ready:visible && view.can?.endStalled === true};
   }
   function elapsed(since, now) {
     return Number.isFinite(since) && Number.isFinite(now) ? Math.max(0, Math.floor((now - since) / 1000)) : null;
@@ -32,5 +45,5 @@
     }
     return 'This player has no pending action in this stage.';
   }
-  return {stableSignature, elapsed, clock, reason};
+  return {stableSignature, stalled, elapsed, clock, reason};
 });

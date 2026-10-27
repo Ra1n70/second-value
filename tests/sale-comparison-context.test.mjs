@@ -11,7 +11,9 @@ const extract=(source,name)=>{const fn=source.match(new RegExp('  function '+nam
 const plain=value=>JSON.parse(JSON.stringify(value)),money=value=>Number(value).toLocaleString('en-US');
 const signed=value=>(value>0?'+':value<0?'−':'')+money(Math.abs(value));
 const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const moduleContext={module:{exports:{}}};runInNewContext(moduleSource,moduleContext);const SaleCompare=moduleContext.module.exports;
+const moduleContext={module:{exports:{}}};runInNewContext(moduleSource,moduleContext);
+const cluesContext={module:{exports:{}}};runInNewContext(await readFile(new URL('round-clues.js',client),'utf8'),cluesContext);const Clues=cluesContext.module.exports;
+const SaleCompare=moduleContext.module.exports;
 const ids=['harbor-clock','crew-badge','harbor-map','studio-camera','map-print','replica-camera'];
 const itemsFor=(catalogIds=ids)=>catalogIds.map((id,slot)=>({...structuredClone(E.catalogItems(5).find(item=>item.catalogId===id)),id:`lot-${slot}`}));
 const targets={restorer:[0],appraiser:[],collector:[1,2],salvager:[4,5],curator:[1,2,3],broker:[3]};
@@ -19,10 +21,11 @@ const optionsFor=(role,items,slots)=>({theme:role==='collector'?'harbor':null,..
 function fixture(kind,role,{slots=targets[role],paid=900,catalogIds=ids,mode=role==='appraiser'?'ordinary':'special'}={}){
   const items=itemsFor(catalogIds);
   if(kind==='solo'){
-    const game=E.newGame(role,73,'harbor',{noBots:true});Object.assign(game,{items,phase:'dispose',winner:'you',bid:paid});
+    const game=E.newGame(role,73,'harbor',{noBots:true,rulesVersion:6});Object.assign(game,{items,phase:'dispose',winner:'you',bid:paid});
     return {game,saleMode:mode,repairIds:role==='restorer'?slots.map(slot=>items[slot].id):[],pairIds:role==='collector'?slots.map(slot=>items[slot].id):[],abilityIds:['salvager','curator','broker'].includes(role)?slots.map(slot=>items[slot].id):[]};
   }
   const room=R.createRoom({code:'SALE01',seed:73,host:{id:'host',name:'Host',role,theme:'harbor'}});
+  room.rulesVersion=6;room.players[0].cash=E.startingCashFor(6);
   R.joinRoom(room,{id:'guest',name:'Guest',role:'appraiser'});
   const act=(id,type,fields={})=>R.applyAction(room,id,{type,turnId:room.turnId,...fields});
   act('host','ready',{ready:true});act('guest','ready',{ready:true});act('host','start');
@@ -32,8 +35,8 @@ function fixture(kind,role,{slots=targets[role],paid=900,catalogIds=ids,mode=rol
 }
 function disposal(kind,draft,{engine=E}={}){
   let input=null,calls=0;
-  const context={...draft,E:engine,money,signed,escape,SaleCompare:{markup(value){calls++;input=plain(value);return SaleCompare.markup(value);}},Notes:{buttonMarkup:()=>''},truth:()=>'',repairSelection:()=>'',pairSelection:()=>'',abilitySelection:()=>'',abilityInstruction:()=>'',historyMarkup:()=>'',participants:()=>'',processingSelection:()=>'',references:()=>'',L:{translate:value=>value},playerById:id=>draft.state?.view.players.find(p=>p.id===id),userName:player=>player.name};
-  const before=JSON.stringify(draft),source=kind==='solo'?app:online,names=kind==='solo'?['saleSelection','receiptHtml','disposal']:['plan','receiptMarkup','disposal'];
+  const context={...draft,E:engine,Clues,money,signed,escape,letter:slot=>String.fromCharCode(65+slot),SaleCompare:{markup(value){calls++;input=plain(value);return SaleCompare.markup(value);}},Notes:{buttonMarkup:()=>''},truth:()=>'',repairSelection:()=>'',pairSelection:()=>'',abilitySelection:()=>'',abilityInstruction:()=>'',historyMarkup:()=>'',participants:()=>'',processingSelection:()=>'',references:()=>'',L:{translate:value=>value},playerById:id=>draft.state?.view.players.find(p=>p.id===id),userName:player=>player.name};
+  const before=JSON.stringify(draft),source=kind==='solo'?app:online,names=kind==='solo'?['saleSelection','receiptHtml','exactBlocker','disposal']:['plan','receiptMarkup','processingKey','abilityHint','crateLots','disposal'];
   const html=runInNewContext(names.map(name=>extract(source,name)).join('\n')+'\ndisposal();',context);
   assert.equal(JSON.stringify(draft),before,'comparing sale plans cannot change cash, selections or room truth');
   return {input,html,calls};
@@ -109,10 +112,32 @@ test('actual render dispatch keeps comparison previews out of bidding and settle
   const document={activeElement:null,body:{classList:{toggle(){}},dataset:{}}},noPreview=()=>assert.fail('only disposal may render sale comparisons');
   for(const phase of ['inspect','bid','round-summary','result']){
     const game={phase,round:1,history:[],winner:null},context={game,session:{seed:1,auctionNumber:1},main,document,rolePicker:()=>'',inspection:()=>'',roundSummary:()=>'',result:()=>'',disposal:noPreview,sessionBanner:()=>'',bidderSeats:()=>'',L:{localize(){}},bind(){},bindNotebook(){},Tutorial:{bind(){}},Show:{sourceMarkup:()=>'',present(){}},E};
-    runInNewContext(extract(app,'render')+'\nrender();',context);
+    runInNewContext(extract(app,'render')+'\nrender();',{...context,roundKey:()=>'solo',renderedRound:'solo',thinking:{},updateThinking(){}});
   }
   for(const phase of ['auction','round-summary','result','ended']){
     const context={state:{credentials:{code:'SALE01'},connection:'Connected',view:{phase,round:1,auctionNumber:1,lots:[],selfId:'host',self:{cash:100,role:'appraiser'},winnerId:null}},renderedTurn:null,main,document,window:{sessionStorage:{}},toolbar:()=>'',status:()=>'',seats:()=>'',recoveryPanel:()=>'',auction:()=>'',roundSummary:()=>'',result:()=>'',disposal:noPreview,L:{localize(){}},bind(){},Tutorial:{bind(){}},updateRecoveryClocks(){},Notes:{bind(){}},Show:{sourceMarkup:()=>'',valuationMarkup:()=>''},showCurrentScene(){},E};
-    runInNewContext(extract(online,'render')+'\nrender();',context);
+    runInNewContext(extract(online,'render')+'\nrender();',{...context,scheduleThinking(){}});
+  }
+});
+
+test('the room sale hint names an unused ability gain but never selects it or changes the comparison',()=>{
+  const empty=fixture('room','collector',{slots:[]}),{input,html}=disposal('room',empty);
+  assert.match(html,/Your ability can add value here/);
+  assert.match(html,/<li><span data-no-localize>A<\/span> · <span>Old Harbor mantel clock<\/span><\/li><li><span data-no-localize>C<\/span> · <span>Original harbor survey<\/span><\/li><\/ul><p><span>Net gain vs ordinary sale<\/span> <strong class="positive">\+92<\/strong>/,'the most valuable Old Harbor pair, as the engine plans it');
+  assert.equal(input.special.recovery,input.ordinary.recovery,'the hint does not turn into a selected ability quote');
+  assert.deepEqual(plain(empty.state.pairSlots),[]);
+  assert.doesNotMatch(disposal('room',fixture('room','collector')).html,/Your ability can add value here/,'a chosen pair replaces the hint');
+  assert.doesNotMatch(disposal('room',fixture('room','appraiser',{slots:[]})).html,/Your ability can add value here/);
+  assert.ok(html.indexOf('online-sale-controls')<html.indexOf('sale-comparison'),'sale choices come first in the main column');
+});
+
+test('a crate that cannot host the winner’s ability sells at ordinary prices and says why', () => {
+  const oneGenuine = ['crew-badge', 'replica-cup', 'replica-badge', 'toy-camera', 'map-print', 'replica-camera'];
+  for (const kind of ['solo', 'room']) {
+    const {html, input} = disposal(kind, fixture(kind, 'curator', {slots: [], catalogIds: oneGenuine, mode: 'ordinary'}));
+    assert.match(html, /<p class="sale-ability-blocked">Not possible in this crate: an exhibition needs three genuine, intact objects from different categories\.<\/p>/, kind);
+    assert.doesNotMatch(html, kind === 'solo' ? /data-sale="special"/ : /data-online-sale="special"/, `${kind}: no ability button`);
+    assert.equal(input.special, null, `${kind}: no ability column in the comparison`);
+    assert.doesNotMatch(disposal(kind, fixture(kind, 'curator', {slots: []})).html, /sale-ability-blocked/, `${kind}: a crate with an exhibition shows no warning`);
   }
 });

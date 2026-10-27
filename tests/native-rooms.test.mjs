@@ -12,6 +12,9 @@ const hostProfile = { name: 'Private Appraiser', role: 'appraiser', theme: 'harb
 const guestProfile = { name: 'Workshop Guest', role: 'restorer', theme: 'railway' };
 const migration = await readFile(new URL('../drizzle/0000_natural_firebrand.sql', import.meta.url), 'utf8');
 const E = createRequire(import.meta.url)('../game/engine.cjs');
+
+// Tables created under the current rules start with this much cash.
+const OPENING = E.startingCashFor(E.RULES_VERSION);
 let sequence = 0;
 const requestId = () => `native-room-request-${++sequence}`;
 
@@ -203,11 +206,11 @@ test('a bot-winning final human submission races safely, sells once and restores
   assert.equal(settled.winnerId, computer.id);
   assert.equal(settled.history.length, 1);
   assert.equal(settled.ledger.length, 1);
-  assert.equal(settled.self.cash, 1000);
-  const plan = E.salePlan(computer.role, settled.lots, 'special', 1000 - amount, {theme: computer.theme});
+  assert.equal(settled.self.cash, OPENING);
+  const plan = E.salePlan(computer.role, settled.lots, 'special', OPENING - amount, {theme: computer.theme});
   assert.equal(settled.receipt.recovery, plan.recovery);
   assert.equal(settled.receipt.cost, plan.cost);
-  assert.equal(winner.cash, 1000 - amount + plan.recovery);
+  assert.equal(winner.cash, OPENING - amount + plan.recovery);
   assert.equal(winner.ready, true);
   noSecrets(settled, [host]);
   await api.reopen();
@@ -242,8 +245,8 @@ test('new role choices and fees survive a simultaneous D1 sale replay without le
     await api.command(host, {type: 'bid', amount: (await api.view(host)).reservePrice, pass: false});
     await api.command(guest, {type: 'bid', amount: null, pass: true});
     const opened = await api.view(host);
-    assert.equal(opened.rulesVersion, 6);
-    const remainingCash = 1000 - opened.winningBid;
+    assert.equal(opened.rulesVersion, 7);
+    const remainingCash = OPENING - opened.winningBid;
     const expected = E.salePlan(role, opened.lots, 'special', remainingCash, {abilityIds: slots.map(slot => opened.lots[slot].id)});
     const saleCommand = {type: 'sell', turnId: opened.turnId, mode: 'special', repairSlots: [], pairSlots: [], abilitySlots: slots};
     const id = requestId();
@@ -259,7 +262,7 @@ test('new role choices and fees survive a simultaneous D1 sale replay without le
     assert.equal(after.ledger.length, 1);
     englishError(await api.action(host, saleCommand), 409);
     assert.equal((await api.view(host)).self.cash, after.self.cash);
-    assert.equal((await api.view(guest)).self.cash, 1000);
+    assert.equal((await api.view(guest)).self.cash, OPENING);
   }
 });
 
@@ -284,7 +287,7 @@ test('D1 keeps a public fixed reserve across restarts and rejects low bids witho
   assert.equal(unsold.phase, 'result');
   assert.equal(unsold.winnerId, null);
   assert.equal(unsold.ledger[0].paid, 0);
-  assert.ok(unsold.players.every(player => player.cash === 1000));
+  assert.ok(unsold.players.every(player => player.cash === OPENING));
 });
 
 test('source and actual/hypothetical valuations persist in D1 and stay private until settlement', async t => {
@@ -306,7 +309,7 @@ test('source and actual/hypothetical valuations persist in D1 and stay private u
   assert.equal(actual.id, host.playerId);
   assert.equal(actual.recovery, settled.receipt.recovery);
   assert.equal(actual.profit, settled.receipt.profit);
-  assert.equal(actual.cashBefore, 1000);
+  assert.equal(actual.cashBefore, OPENING);
   assert.equal(settled.valuation.rows.filter(row => row.actual).length, 1);
   assert.equal(settled.sourceId, started.sourceId);
   const balances = settled.players.map(player => player.cash);
@@ -363,9 +366,9 @@ test('two simultaneous final bids survive a stale D1 CAS and reveal/debit exactl
   assert.equal(view.winningBid, 500);
   assert.equal(view.history.length, 1);
   assert.equal(view.history[0].bids.length, 4);
-  assert.equal(view.self.cash, 500);
+  assert.equal(view.self.cash, OPENING - 500);
   assert.equal(view.ledger.length, 0);
-  assert.equal(view.players.filter(player => player.id !== third.playerId).every(player => player.cash === 1000), true);
+  assert.equal(view.players.filter(player => player.id !== third.playerId).every(player => player.cash === OPENING), true);
 });
 
 test('same-ID concurrent sell and a lost sale response credit one receipt and ledger across restart', async t => {
@@ -374,7 +377,7 @@ test('same-ID concurrent sell and a lost sale response credit one receipt and le
   await api.command(host, { type: 'bid', amount: (await api.view(host)).reservePrice, pass: false });
   await api.command(guest, { type: 'bid', amount: null, pass: true });
   const opened = await api.view(host);
-  const expectedCash = 1000 - opened.winningBid + opened.lots.reduce((sum, lot) => sum + lot.base, 0);
+  const expectedCash = OPENING - opened.winningBid + opened.lots.reduce((sum, lot) => sum + lot.base, 0);
   const command = { type: 'sell', turnId: opened.turnId, mode: 'ordinary', repairSlots: [], pairSlots: [] };
   const id = requestId();
   const results = await api.race(host.roomCode, [() => api.action(host, command, id), () => api.action(host, command, id)]);
@@ -388,7 +391,7 @@ test('same-ID concurrent sell and a lost sale response credit one receipt and le
   const replay = await api.action(host, command, id);
   assert.equal(replay.status, 200);
   assert.deepEqual(replay.body.view, recovered);
-  assert.equal((await api.view(guest)).self.cash, 1000);
+  assert.equal((await api.view(guest)).self.cash, OPENING);
   englishError(await api.action(host, command), 409);
   assert.equal((await api.view(host)).self.cash, expectedCash);
   assert.equal((await api.view(host)).ledger.length, 1);
@@ -400,7 +403,7 @@ test('two different concurrent sell IDs still settle a crate only once', async t
   await api.command(host, { type: 'bid', amount: 200, pass: false });
   await api.command(guest, { type: 'bid', amount: null, pass: true });
   const opened = await api.view(host);
-  const expectedCash = 800 + opened.lots.reduce((sum, lot) => sum + lot.base, 0);
+  const expectedCash = OPENING - 200 + opened.lots.reduce((sum, lot) => sum + lot.base, 0);
   const command = { type: 'sell', turnId: opened.turnId, mode: 'ordinary', repairSlots: [], pairSlots: [] };
   const results = await api.race(host.roomCode, [() => api.action(host, command), () => api.action(host, command)]);
   assert.deepEqual(results.map(result => result.status).sort(), [200, 409]);
@@ -444,13 +447,13 @@ test('a final bid racing withdrawal has a valid serial outcome without lost mone
     assert.equal(view.phase, 'auction');
     assert.equal(view.self.bid, null);
     assert.equal(view.history.length, 0);
-    assert.equal(view.self.cash, 1000);
+    assert.equal(view.self.cash, OPENING);
     assert.equal(guestView.self.bid.pass, true);
   } else {
     englishError(withdrawn, 409);
     assert.equal(view.phase, 'dispose');
     assert.equal(view.history.length, 1);
-    assert.equal(view.self.cash, 500);
+    assert.equal(view.self.cash, OPENING - 500);
     assert.equal(view.winnerId, host.playerId);
   }
 });
@@ -552,7 +555,7 @@ test('D1 presence crosses its exact threshold, survives reopening, and reconnect
   assert.equal(snapshot.serverNow, start + 15000);
   assert.equal(snapshot.revision, first.revision);
   assert.equal(snapshot.turnId, first.turnId);
-  assert.ok(snapshot.players.every(player => player.cash === 1000 && !player.submitted));
+  assert.ok(snapshot.players.every(player => player.cash === OPENING && !player.submitted));
   const offlineRevision = snapshot.presenceRevision;
   await api.reopen();
   api.advance(10000);

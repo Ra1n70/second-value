@@ -30,3 +30,27 @@
 @media(max-width:740px){.crate-provenance{gap:16px;padding:17px 15px}.provenance-evidence{flex-basis:95px;padding:18px 10px 10px;min-height:105px}.provenance-copy h3{font-size:21px}.provenance-story{display:none}.provenance-copy .provenance-hint{margin-top:3px;padding-top:0;border:0;font-size:12px}.provenance-copy small{font-size:11px}.evidence-mark{right:7px;width:22px;height:22px;top:36px}.evidence-word{font-size:12px}.table-valuation{padding:16px 12px}.valuation-heading{gap:14px;align-items:flex-start}.valuation-heading h3{font-size:21px}.valuation-ordinary{padding-left:12px;max-width:130px}.valuation-ordinary span{font-size:11px}.valuation-ordinary strong{font-size:27px}.valuation-grid{gap:9px}.valuation-card,.valuation-card.is-actual{padding:11px}.valuation-player{gap:7px}.valuation-portrait{width:34px;height:34px}.valuation-player strong{font-size:14px}.valuation-player div>span{font-size:11px}.valuation-breakdown{font-size:11px}.valuation-profit>strong{font-size:29px}.valuation-profit>span{font-size:11px}.auction-moment{top:72px;right:10px;padding:12px 13px;gap:10px;max-width:calc(100vw - 20px)}.moment-envelope{width:35px}.moment-bid-name{width:27px}.moment-envelopes{min-width:80px}.moment-copy>strong{font-size:18px}.moment-stamp{font-size:15px}.moment-copy>small{font-size:11px}.auction-sound-toggle{font-size:12px;padding:5px 7px}}
 @media(prefers-reduced-motion:reduce){.auction-moment,.auction-moment *,.sv-show-hammer .object-art,.sv-show-hammer .authenticity-stamp,.sv-show-hammer .truth-art:after,.sv-show-settled .valuation-card,.sv-show-hammer .valuation-card,.sv-show-settled .valuation-ordinary strong,.sv-show-hammer .valuation-ordinary strong{animation:none!important}.moment-unveiled{opacity:1}.sv-show-hammer .truth-art:after{display:none}.auction-moment{opacity:1}}
 .provenance-details .provenance-story{display:block}
+/* At the table the source is a slim band; the full card pushed the crate below the fold. */
+@media(min-width:851px){body.tabletop-mode .crate-provenance{padding:6px 14px;gap:14px;margin-bottom:6px}body.tabletop-mode .provenance-evidence{flex:0 0 140px;min-height:0;padding:6px 8px 5px;transform:rotate(-3deg)}body.tabletop-mode .provenance-evidence .evidence-number,body.tabletop-mode .provenance-evidence .evidence-lines,body.tabletop-mode .provenance-evidence .evidence-mark{display:none}body.tabletop-mode .provenance-evidence .evidence-word{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;max-width:none;font-size:11px;line-height:1.25}body.tabletop-mode .provenance-copy{grid-template-columns:auto minmax(0,1fr) auto}body.tabletop-mode .provenance-copy .eyebrow{font-size:10px}body.tabletop-mode .provenance-copy h3{font-size:19px;margin:0}}
+
+/* After settlement each player sees their own top bid against what the crate was worth to them. */
+.bid-review {margin:14px 0 16px;padding:12px 14px;border:1px solid #a88c5266;border-left:3px solid #d4af68;border-radius:5px;background:#24372be8;color:#e4d7b8}
+.bid-review h3 {margin:0 0 8px;font:600 15px/1.4 var(--sans);color:var(--gold,#e7bd72)}
+.bid-review dl {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 14px;margin:0}
+.bid-review dt {font-size:13px;line-height:1.4;color:#b8c1b0}
+.bid-review dd {margin:2px 0 0;font:600 20px/1.3 var(--serif);color:#f0e3c4;font-variant-numeric:tabular-nums}
+.bid-review p {margin:10px 0 0;font-size:14px;line-height:1.5}
+.bid-review p strong {margin-left:4px;font-variant-numeric:tabular-nums}
+.bid-review .positive {color:#a1e0bd}
+.bid-review .negative {color:#f1aa98}
+@media (max-width:740px) {
+  .bid-review dl {grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+/* Solo seats read "Deciding" for a moment after a round opens. */
+.seat-status.is-thinking {opacity:.75}
+/* The moment card sits low on the right, clear of the room bar and status at the top of the table. */
+.auction-moment{top:auto;bottom:136px}
+@media(max-width:740px){.auction-moment{top:auto;bottom:96px}}
+/* When a crate cannot host your ability, the note reads as a caution instead of the usual hint. */
+.ability-blocked,.online-mode .online-dock .dock-skill p.ability-blocked,.dock-skill .role-tool.ability-blocked{color:#f1c38a}
+.sale-ability-blocked{margin:10px 0 0;padding:8px 11px;border-left:3px solid #c98b4a;border-radius:3px;background:#3a2a1a66;color:#f1c38a;font-size:14px;line-height:1.5}
