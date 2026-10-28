@@ -54,3 +54,15 @@
 /* When a crate cannot host your ability, the note reads as a caution instead of the usual hint. */
 .ability-blocked,.online-mode .online-dock .dock-skill p.ability-blocked,.dock-skill .role-tool.ability-blocked{color:#f1c38a}
 .sale-ability-blocked{margin:10px 0 0;padding:8px 11px;border-left:3px solid #c98b4a;border-radius:3px;background:#3a2a1a66;color:#f1c38a;font-size:14px;line-height:1.5}
+/* On phones the source card's text gets the full width; the decorative ticket shrinks. */
+@media (max-width:740px) {
+  body.tabletop-mode .crate-provenance {padding:10px 12px;gap:12px}
+  body.tabletop-mode .provenance-evidence {flex-basis:64px;min-height:0;padding:9px 6px 6px}
+  body.tabletop-mode .provenance-evidence .evidence-number,
+  body.tabletop-mode .provenance-evidence .evidence-lines,
+  body.tabletop-mode .provenance-evidence .evidence-mark {display:none}
+  body.tabletop-mode .provenance-evidence .evidence-word {font-size:11px}
+  body.tabletop-mode .provenance-copy {display:block}
+  body.tabletop-mode .provenance-copy .provenance-hint {margin-top:4px;padding:0;border:0}
+  body.tabletop-mode .provenance-details>summary {padding:4px 0}
+}

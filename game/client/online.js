@@ -268,7 +268,7 @@
       const [, label, hint] = options.find(([crates]) => crates === limit) || options[0];
       return `<section class="online-match-length" aria-label="Match length"><h4>Match length</h4><p><strong>${label}</strong><span>${hint}</span></p></section>`;
     }
-    return `<section class="online-match-length" role="group" aria-labelledby="online-match-length-title"><h4 id="online-match-length-title">Match length</h4><div class="online-match-options">${options.map(([crates,label,hint]) => `<button type="button" data-online-length="${crates ?? 'free'}" aria-pressed="${limit === crates}"><strong>${label}</strong><span>${hint}</span></button>`).join('')}</div><p>Changing the length asks other players to get ready again.</p></section>`;
+    return `<section class="online-match-length" role="group" aria-labelledby="online-match-length-title"><h4 id="online-match-length-title">Match length</h4><div class="online-match-options">${options.map(([crates,label,hint]) => `<button type="button" data-online-length="${crates ?? 'free'}" aria-pressed="${limit === crates}"><strong>${label}</strong><span>${hint}</span></button>`).join('')}</div>${view.players.some(player => player.active && !player.isBot && player.id !== view.selfId) ? '<p>Changing the length asks other players to get ready again.</p>' : ''}</section>`;
   }
   function lobbyBotControls() {
     const view = state.view;
@@ -495,7 +495,7 @@
       if (replacement) replacement.open = saved.open;
     }
     renderedTurn = view?.turnId ?? null;
-    if (previousTurn !== renderedTurn) revealTable();
+    if (previousTurn !== renderedTurn) { revealTable(); revealSale(); }
     L.localize(main);
     bind();
     Tutorial.bind(document);
@@ -522,11 +522,20 @@
     const view = state.view, head = main.querySelector('.workbench-head'), objects = [...main.querySelectorAll('.object-button')];
     if (view?.phase !== 'auction' || !head || !objects.length) return;
     const dock = main.querySelector('.online-dock'), dockTop = dock && getComputedStyle(dock).position === 'sticky' ? dock.getBoundingClientRect().top : window.innerHeight;
-    const overflow = Math.max(...objects.map(object => object.getBoundingClientRect().bottom)) - dockTop;
-    if (overflow <= 0) return;
-    // Scroll only as far as the objects need, and never past the table heading. The table has just
-    // re-rendered, so an instant jump also works in a background tab that paints no animation frames.
-    window.scrollBy(0, Math.min(overflow + 8, head.getBoundingClientRect().top - 8));
+    const overflow = Math.max(...objects.map(object => object.getBoundingClientRect().bottom)) - dockTop, top = head.getBoundingClientRect().top - 8;
+    if (top >= 0 && overflow <= 0) return;
+    // Scroll only as far as the objects need, and never past the table heading; a page left below the
+    // heading by the last round comes back up to it. The table has just re-rendered, so an instant
+    // jump also works in a background tab that paints no animation frames.
+    window.scrollBy(0, top < 0 ? top : Math.min(overflow + 8, top));
+  }
+  function revealSale() {
+    const head = main.querySelector('.sale-disposal .reveal-main'), button = main.querySelector('#online-sell');
+    if (state.view?.phase !== 'dispose' || !head) return;
+    const top = head.getBoundingClientRect().top - 8, overflow = button ? button.getBoundingClientRect().bottom + 8 - window.innerHeight : 0;
+    // As in solo practice, the sale button comes into view without scrolling past the heading, and a
+    // page left below the heading by the bid form comes back up to it.
+    if (top < 0 || overflow > 0) window.scrollBy(0, top < 0 ? top : Math.min(overflow, top));
   }
   function showCurrentScene() {
     const view=state.view;

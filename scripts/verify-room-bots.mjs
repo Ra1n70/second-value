@@ -1,5 +1,6 @@
 // Disposable built-Worker smoke. Generated credentials stay in process memory.
 import assert from 'node:assert/strict';
+import E from '../game/engine.cjs';
 
 const origin = new URL(process.argv[2] || 'http://127.0.0.1:5177').origin;
 const summaries = [];
@@ -52,6 +53,10 @@ try {
     const host = await request('/api/rooms', {body: {name: 'Computer Smoke QA', role: 'appraiser'}, expected: 201});
     for (const style of ['steady', 'bold', 'patient'].slice(0, computerCount)) await command(host, 'add-bot', {style});
     let current = await view(host);
+    assert.equal(current.rulesVersion, E.RULES_VERSION, 'Built Worker rules must match the current game source');
+    const opening = E.startingCashFor(current.rulesVersion);
+    assert.ok(current.players.every(player => player.cash === opening), 'Human and computer opening funds must match the room rules');
+    assert.equal(current.self.cash, opening);
     assert.equal(current.players.filter(player => player.isBot).length, computerCount);
     const originalIds = current.players.filter(player => player.isBot).map(player => player.id);
     await command(host, 'ready', {ready: true});
@@ -71,19 +76,26 @@ try {
       }
       assert.equal(current.phase, 'result');
       assert.equal(current.ledger.length, crate);
-      assert.equal(current.self.cash, 1000);
+      assert.equal(current.self.cash, opening);
       assert.ok(current.players.every(player => Number.isSafeInteger(player.cash) && player.cash >= 0));
       if (current.winnerId) {
         assert.ok(originalIds.includes(current.winnerId));
-        const previous = crate === 1 ? 1000 : current.ledger[crate - 2].players.find(player => player.id === current.winnerId).cash;
+        const previous = crate === 1 ? opening : current.ledger[crate - 2].players.find(player => player.id === current.winnerId).cash;
         assert.equal(current.players.find(player => player.id === current.winnerId).cash, previous + current.receipt.profit);
       }
+      const settledBalances = current.players.map(player => [player.id, player.cash]);
+      const readAgain = await view(host);
+      assert.equal(readAgain.ledger.length, crate, 'Repeated reads must not settle a computer sale twice');
+      assert.deepEqual(readAgain.players.map(player => [player.id, player.cash]), settledBalances);
       privateBoundary(current);
-      if (crate === 1) { await command(host, 'ready', {ready: true}); current = await command(host, 'continue'); }
+      if (crate === 1) {
+        await command(host, 'ready', {ready: true}); current = await command(host, 'continue');
+        assert.deepEqual(current.players.map(player => [player.id, player.cash]), settledBalances, 'The next crate must preserve each seat balance');
+      }
     }
     current = await command(host, 'finish');
     assert.equal(current.phase, 'ended');
-    summaries.push(`${computerCount + 1} seats: 2 crates, private bids, automatic sales, continued cash and host finish passed`);
+    summaries.push(`${computerCount + 1} seats: rules ${current.rulesVersion}, opening ${opening}, 2 crates, private bids, single-credit automatic sales, continued balances and host finish passed`);
   }
   console.log(JSON.stringify({ok: true, runtime: 'sites', storage: 'd1', checks: summaries}, null, 2));
 } catch (error) {

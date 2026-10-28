@@ -31,7 +31,7 @@
   let pendingAction = null;
   // Computers seal their bids the moment a round opens. Their seats read "Deciding" for a short
   // pause first, so the table keeps a beat of suspense; when bids reveal is unchanged.
-  let thinking = {turn:null,start:0,timer:null}, renderedRound = null;
+  let thinking = {turn:null,start:0,timer:null}, renderedRound = null, renderedPhase = null;
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE) || 'null');
     if (saved && Object.hasOwn(E.ROLES,saved.selectedRole)) selectedRole = saved.selectedRole;
@@ -92,6 +92,24 @@
       else if(status?.classList.contains('is-thinking')){status.classList.remove('is-thinking');status.textContent=L.translate('Sealed bid');}
     }
     if(next<Infinity)thinking.timer=setTimeout(updateThinking,next+20);
+  }
+  function revealTable() {
+    const head=main.querySelector('.workbench-head'),objects=[...main.querySelectorAll('.objects .object-button')];
+    if(!game||game.phase!=='inspect'||!head||!objects.length)return;
+    const dock=main.querySelector('.action-dock'),dockTop=dock&&getComputedStyle(dock).position==='sticky'?dock.getBoundingClientRect().top:window.innerHeight;
+    const overflow=Math.max(...objects.map(object=>object.getBoundingClientRect().bottom))-dockTop,top=head.getBoundingClientRect().top-8;
+    // Scroll only as far as the objects need, and never past the table heading. A page left below
+    // the heading by the last round comes back up to it.
+    if(top<0||overflow>0)window.scrollBy(0,top<0?top:Math.min(overflow+8,top));
+  }
+  function revealNextStep() {
+    // When a round settles, the crate is won or it is sold, the next-step button comes into view
+    // wherever the last screen left the page, without scrolling past the heading above it. The sale
+    // button sits below the long sale choices, so the sale screen opens at its heading.
+    const head=main.querySelector('.workbench-head'),button=main.querySelector('.phase-layout>.side-panel button.primary');
+    if(!head||!button)return;
+    const top=head.getBoundingClientRect().top-8,overflow=button.getBoundingClientRect().bottom+8-window.innerHeight;
+    if(top<0||overflow>0)window.scrollBy(0,top<0?top:Math.min(overflow,top));
   }
   function bidderSeats() {
     const revealed=['round-summary','dispose','result'].includes(game.phase);
@@ -241,7 +259,7 @@
     const role=E.ROLES[game.role],known=informationFor(game.selected).known;
     const exhausted=game.inspected.length>=2,blocked=Clues.abilityBlocker(game.role,game.theme,soloLots(),soloCounts());
     const skillPanel=game.role==='appraiser'?`<button type="button" class="skill-button" id="use-skill" ${known||exhausted?'disabled':''}><span>${known?'Information already confirmed':role.skill}</span><span>${2-game.inspected.length} / 2 uses left</span></button><p class="skill-result" id="skill-result" aria-live="polite">${known?'Read this object’s confirmed details above.':exhausted?'No private note for this object. Both inspection uses are spent.':'Choose an object, then authenticate it. Two uses for this entire crate.'}</p>`:`<strong>${role.skill}</strong>${blocked?`<p class="role-tool ability-blocked">${blocked}</p>`:`<p class="role-tool">${abilityStatus()}</p>`}`;
-    return `<section class="action-dock dock-inspect" aria-label="Your auction controls"><div class="dock-context"><span class="eyebrow">YOUR AUCTION DESK</span><strong>Target: object ${String.fromCharCode(65+game.selected)}</strong><span class="small muted">Bids stay sealed until you confirm.</span></div><div class="dock-skill">${skillPanel}</div><div class="dock-primary">${E.getCash(game)<minimumBid()?'<button type="button" class="primary" id="pass-bid">Pass this round</button>':'<button type="button" class="primary" id="open-bidding">Prepare a bid →</button>'}<small>${game.reservePrice&&E.getCash(game)<minimumBid()?'Your cash is below the reserve. You can pass this round.':'Opening the bid form submits nothing. You can come back.'}</small></div></section>`;
+    return `<section class="action-dock dock-inspect" aria-label="Your auction controls"><div class="dock-context"><span class="eyebrow">YOUR AUCTION DESK</span><strong>Target: object ${String.fromCharCode(65+game.selected)}</strong><span class="small muted">Bids stay sealed until you confirm.</span></div><div class="dock-skill${game.role==='appraiser'?' has-skill-action':blocked?' is-blocked':''}">${skillPanel}</div><div class="dock-primary">${E.getCash(game)<minimumBid()?'<button type="button" class="primary" id="pass-bid">Pass this round</button>':'<button type="button" class="primary" id="open-bidding">Prepare a bid →</button>'}${game.reservePrice&&E.getCash(game)<minimumBid()?'<small class="dock-warning">Your cash is below the reserve. You can pass this round.</small>':'<small>Opening the bid form submits nothing. You can come back.</small>'}</div></section>`;
   }
   function inspection() {
     return `<div class="workbench-head"><div class="lot-heading"><div><h2 class="lot-title">The auction table</h2><span class="round-preview">${nextCluePreview()}</span></div></div><div class="workbench-tools">${reserveNotice()}${valueNotice()}${Notes.buttonMarkup()}<details class="round-rules"><summary>Round rules</summary><div class="round-rules-content"><p>${roundRule()}</p><p>Tie priority</p><p>${game.priority.map(bidderName).join(' → ')}</p></div></details></div></div>
@@ -381,11 +399,14 @@
     document.body.classList.toggle('tabletop-mode',Boolean(session));
     document.body.dataset.phase=game?game.phase:'roles';
     const key=roundKey();
-    if(key!==renderedRound) {
+    const newRound=key!==renderedRound;
+    if(newRound) {
       // Only a round this page watched open gets the pause; a refresh shows bids as they stand.
       if(renderedRound!==null&&game&&['inspect','bid'].includes(game.phase)){thinking.turn=key;thinking.start=performance.now();}
       renderedRound=key;
     }
+    const newPhase=(game?.phase??null)!==renderedPhase;
+    renderedPhase=game?.phase??null;
     main.innerHTML=!game?rolePicker():game.phase==='inspect'||game.phase==='bid'?inspection():game.phase==='round-summary'?roundSummary():game.phase==='dispose'?disposal():result();
     if(session)main.insertAdjacentHTML('afterbegin',sessionBanner()+bidderSeats()+(['inspect','bid','round-summary'].includes(game.phase)?Show.sourceMarkup(game.sourceId,E.SOURCES):''));
     L.localize(main);
@@ -393,6 +414,8 @@
     Tutorial.bind(document);
     bindNotebook();
     updateThinking();
+    if(newRound)revealTable();
+    if(newPhase&&['round-summary','dispose','result'].includes(game?.phase))revealNextStep();
     if(game) {
       const last=game.history.at(-1);
       const event=game.phase==='round-summary'?'round':game.phase==='dispose'?'hammer':game.phase==='result'?(game.winner==='you'?'settled':game.winner?'hammer':'round'):null;
@@ -430,7 +453,12 @@
     main.querySelector('#start-game')?.addEventListener('click',start);
     main.querySelectorAll('[data-item]').forEach(button=>button.addEventListener('click',()=>{game.selected=Number(button.dataset.item);save();render();main.querySelector(`.object-button[data-item="${game.selected}"]`)?.focus({preventScroll:true});}));
     main.querySelector('#use-skill')?.addEventListener('click',()=>{try{act('inspect',{index:game.selected});save();render();}catch(error){main.querySelector('#skill-result').textContent=L.translate(error.message);}});
-    main.querySelector('#open-bidding')?.addEventListener('click',()=>{act('open');save();render();});
+    main.querySelector('#open-bidding')?.addEventListener('click',()=>{
+      act('open');save();render();
+      // On phones the pinned button opens a form further down the page, so bring the form into view.
+      const form=main.querySelector('#bid-form'),box=form?.getBoundingClientRect();
+      if(box&&(box.top<0||box.bottom>window.innerHeight))form.closest('.action-dock').scrollIntoView({block:'nearest'});
+    });
     main.querySelector('#back-to-clues')?.addEventListener('click',()=>{try{act('back');save();render();main.querySelector('#open-bidding')?.focus({preventScroll:true});}catch(error){main.querySelector('#bid-error').textContent=L.translate(error.message);}});
     main.querySelector('#next-round')?.addEventListener('click',()=>{act('next');save();render();});
     const input=main.querySelector('#bid-input');const range=main.querySelector('#bid-range');

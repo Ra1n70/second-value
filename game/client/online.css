@@ -182,7 +182,8 @@ html:is([lang="en"],[lang="es"]) .online-mode .online-entry h1 span:last-child {
 .online-mode .sale-ability-hint .positive {color:#2f5d33}
 /* Phones keep a one-row bid bar on screen while the bid form is closed, and the source text gets the full width. */
 @media (max-width:740px) {
-  .online-mode .online-dock.dock-idle {position:sticky;bottom:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px 12px;padding:10px 12px}
+  /* The bottom inset keeps the bar's buttons above the phone's gesture bar. */
+  .online-mode .online-dock.dock-idle {position:sticky;bottom:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px 12px;padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px))}
   .online-mode .online-dock.dock-idle .dock-context .eyebrow,
   .online-mode .online-dock.dock-idle .dock-context .small,
   .online-mode .online-dock.dock-idle .dock-skill,
@@ -191,15 +192,6 @@ html:is([lang="en"],[lang="es"]) .online-mode .online-entry h1 span:last-child {
   .online-mode .online-dock.dock-idle .dock-skill.has-skill-action>p {display:none}
   .online-mode .online-dock.dock-idle .dock-primary {width:auto}
   .online-mode .online-dock.dock-idle .dock-primary button {width:auto;min-height:44px}
-  body.tabletop-mode .crate-provenance {padding:10px 12px;gap:12px}
-  body.tabletop-mode .provenance-evidence {flex-basis:64px;min-height:0;padding:9px 6px 6px}
-  body.tabletop-mode .provenance-evidence .evidence-number,
-  body.tabletop-mode .provenance-evidence .evidence-lines,
-  body.tabletop-mode .provenance-evidence .evidence-mark {display:none}
-  body.tabletop-mode .provenance-evidence .evidence-word {font-size:11px}
-  body.tabletop-mode .provenance-copy {display:block}
-  body.tabletop-mode .provenance-copy .provenance-hint {margin-top:4px;padding:0;border:0}
-  body.tabletop-mode .provenance-details>summary {padding:4px 0}
 }
 /* On phones the pinned bid bar still shows a blocked ability, since it changes what the crate is worth to you. */
 @media (max-width:740px) {

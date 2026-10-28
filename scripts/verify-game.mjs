@@ -1,4 +1,6 @@
 // Disposable API smoke. All generated seat credentials remain in process memory.
+import E from '../game/engine.cjs';
+
 const base = process.argv[2] || 'http://127.0.0.1:5173';
 const stages = [];
 let lastStage = 'initialization';
@@ -72,55 +74,67 @@ try {
   await command(guest, 'ready', {ready: true});
   const started = (await command(host, 'start')).view;
   check(started.phase === 'auction' && started.lots.length === 6, 'Auction did not start with six objects');
+  check(started.rulesVersion === E.RULES_VERSION, 'Built Worker rules differ from the current game source');
+  const initialCash = E.startingCashFor(started.rulesVersion);
+  check(started.self.cash === initialCash && started.players.every(player => player.cash === initialCash), 'New room opening funds mismatch');
   const reserve = started.reservePrice;
   check(started.rulesVersion >= 5 && Number.isSafeInteger(reserve) && reserve > 1, 'Public auction reserve missing');
   check(['workshop','estate','theater'].includes(started.sourceId) && !Object.hasOwn(started,'valuation'), 'Source or valuation privacy mismatch');
   check(reserve === (await view(guest, 'guest-reserve')).reservePrice, 'Reserve differs between seats');
-  stages.push('Ready both and start with a shared public reserve');
+  stages.push(`Ready both and start rules ${started.rulesVersion} with ${initialCash} per seat and a shared public reserve`);
   await command(host, 'inspect', {slot: 0});
   const hostPrivate = await view(host, 'host-private-view');
   const guestPrivate = await view(guest, 'guest-private-view');
   check(guestPrivate.sourceId === started.sourceId && !Object.hasOwn(guestPrivate,'valuation'), 'Source changed or valuation leaked');
   check(hostPrivate.lots[0].known === true && guestPrivate.lots[0].known === false, 'Inspection privacy failed');
   stages.push('Private inspection visible only to appraiser');
-  await command(host, 'bid', {amount: 200, pass: false});
-  check((await view(host, 'verify-own-bid')).self.bid.amount === 200, 'Submitted bid missing');
+  const draftBid = Math.max(200, reserve);
+  check(draftBid <= initialCash, 'The disposable crate cannot fund the smoke draft bid');
+  await command(host, 'bid', {amount: draftBid, pass: false});
+  check((await view(host, 'verify-own-bid')).self.bid.amount === draftBid, 'Submitted bid missing');
   const guestPending = await view(guest, 'verify-bid-privacy');
   const hostPublic = guestPending.players.find(player => player.id === host.playerId);
   check(hostPublic.submitted === true && !Object.hasOwn(hostPublic, 'bid'), 'Other seat exposed private bid');
   await command(host, 'withdraw');
   check((await view(host, 'verify-withdraw')).self.bid === null, 'Withdrawal failed');
-  stages.push('Bid 200, verify privacy, withdraw');
+  stages.push(`Bid ${draftBid}, verify privacy, withdraw`);
   await send('reject-below-reserve', `/api/rooms/${host.roomCode}/actions`, {
     method: 'POST', member: host, expected: 409,
     body: {requestId: crypto.randomUUID(), command: {type: 'bid', turnId: guestPending.turnId, amount: reserve - 1, pass: false}}
   });
   const rejected = await view(host, 'verify-rejected-bid');
-  check(rejected.self.bid === null && rejected.self.cash === 1000 && rejected.phase === 'auction', 'Rejected bid changed state');
+  check(rejected.self.bid === null && rejected.self.cash === initialCash && rejected.phase === 'auction', 'Rejected bid changed state');
   stages.push('Server rejects below-reserve bid without changing money or commitment');
   await command(host, 'bid', {amount: reserve, pass: false});
   await command(guest, 'bid', {amount: null, pass: true});
   const opened = await view(host, 'verify-reveal');
   check(opened.phase === 'dispose' && opened.winnerId === host.playerId && opened.winningBid === reserve, 'First-round hammer mismatch');
-  check(opened.self.cash === 1000 - reserve && opened.lots.every(lot => lot.known), 'Reveal/cash invariant failed');
+  check(opened.self.cash === initialCash - reserve && opened.lots.every(lot => lot.known), 'Reveal/cash invariant failed');
   check(!Object.hasOwn(opened,'valuation'), 'Valuation must wait for the actual sale');
   stages.push('Bid exactly the reserve, guest passes, reveal crate; charge reserve once');
   const proceeds = opened.lots.reduce((sum, lot) => sum + lot.base, 0);
-  const settled = (await command(host, 'sell', {mode: 'ordinary', repairSlots: [], pairSlots: []})).view;
+  const saleBody = {requestId: crypto.randomUUID(), command: {type: 'sell', turnId: opened.turnId, mode: 'ordinary', repairSlots: [], pairSlots: []}};
+  const settled = (await send('ordinary-sale', `/api/rooms/${host.roomCode}/actions`, {method: 'POST', member: host, body: saleBody})).view;
   check(reserve >= Math.round(proceeds * .08) && reserve <= Math.round(proceeds * .12), 'Reserve outside ordinary-value bounds');
-  const expectedCash = 1000 - reserve + proceeds;
+  const expectedCash = initialCash - reserve + proceeds;
   check(settled.phase === 'result' && settled.self.cash === expectedCash && settled.ledger.length === 1, 'Initial settlement invariant failed');
   check(settled.receipt.recovery === proceeds && settled.receipt.paid === reserve, 'Settlement receipt mismatch');
   check(settled.sourceId === started.sourceId && settled.valuation?.ordinary === proceeds, 'Source or valuation total mismatch');
   const actual = settled.valuation.rows.find(row => row.actual);
   check(settled.valuation.rows.length === 2 && actual.id === host.playerId && actual.profit === settled.receipt.profit && actual.recovery === proceeds, 'Actual valuation must match the chosen ordinary sale');
-  check(settled.valuation.rows.every(row => row.cashBefore === 1000), 'Valuation starting funds mismatch');
+  check(settled.valuation.rows.every(row => row.cashBefore === initialCash), 'Valuation starting funds mismatch');
   stages.push('Public source stays fixed; valuation appears only after sale and matches the real receipt');
+  const saleReplay = (await send('replay-same-sale-request', `/api/rooms/${host.roomCode}/actions`, {method: 'POST', member: host, body: saleBody})).view;
+  check(saleReplay.self.cash === expectedCash && saleReplay.ledger.length === 1 && saleReplay.receipt.recovery === proceeds, 'Same-ID sale replay credited twice');
+  await send('reject-second-sale-request', `/api/rooms/${host.roomCode}/actions`, {
+    method: 'POST', member: host, expected: 409, body: {...saleBody, requestId: crypto.randomUUID()}
+  });
+  stages.push('Same sale request ID replays without a second credit; different-ID resale is rejected');
   for (let index = 0; index < 2; index++) {
     const hostAgain = await view(host, `host-settlement-read-${index + 1}`);
     const guestAgain = await view(guest, `guest-settlement-read-${index + 1}`);
     check(hostAgain.self.cash === expectedCash && hostAgain.ledger.length === 1, 'Repeated GET changed winner cash or ledger');
-    check(guestAgain.self.cash === 1000 && guestAgain.ledger.length === 1, 'Repeated GET changed guest cash or ledger');
+    check(guestAgain.self.cash === initialCash && guestAgain.ledger.length === 1, 'Repeated GET changed guest cash or ledger');
   }
   stages.push('Ordinary sale and repeated GETs preserve exactly one credit and one ledger entry');
   await command(host, 'finish');
@@ -128,8 +142,8 @@ try {
   stages.push('Host finishes; guest observes ended');
   console.log(JSON.stringify({
     result: 'PASS', evidence: 'Native Sites HTTP API with D1; not browser or physical-device evidence',
-    roomsCreated: 1, mutationRetries: 0, stages,
-    cash: {initialPerPlayer: 1000, reservePrice: reserve, winningBid: reserve, winnerBeforeSale: 1000 - reserve, ordinarySaleProceeds: proceeds, winnerAfterSale: expectedCash, guestAfterSale: 1000, ledgerEntries: 1},
+    roomsCreated: 1, mutationRetries: 0, saleRequestReplays: 1, stages,
+    cash: {rulesVersion: started.rulesVersion, initialPerPlayer: initialCash, reservePrice: reserve, winningBid: reserve, winnerBeforeSale: initialCash - reserve, ordinarySaleProceeds: proceeds, winnerAfterSale: expectedCash, guestAfterSale: initialCash, ledgerEntries: 1},
     limitation: 'Real cold-start behavior and clipboard/browser interaction not verified'
   }, null, 2));
 } catch (error) {

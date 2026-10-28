@@ -255,3 +255,77 @@ test('an exact break-even reads as break-even, never as making zero', () => {
   assert.doesNotMatch(sold, /would still have made/);
   assert.match(Show.bidReviewMarkup({outcome: 'sold', top: 0, price: 600, worth: 601}), /would still have made:<\/span> <strong class="positive" data-no-localize>\+1/);
 });
+
+test('the bid review opens its clue list when it holds a private authentication', async () => {
+  const Notes = await shared('notebook.js'), storage = {getItem: () => null, setItem() {}, removeItem() {}};
+  const review = lots => Notes.reviewMarkup({key: 'room:OPEN:me:1', storage, round: 2, amount: 300, pass: false, lots, clues: {genuineCount: 3}});
+  const privateLot = {slot: 1, label: 'Known camera', known: true, source: 'Private note', base: 140, genuine: true, condition: 'intact'};
+  const publicLot = {...privateLot, source: 'Public reveal'};
+  assert.match(review([privateLot]), /<details class="bid-crosscheck-facts" open>/);
+  assert.match(review([publicLot]), /<details class="bid-crosscheck-facts">/, 'public facts stay folded');
+  assert.match(review([]), /<details class="bid-crosscheck-facts">/);
+});
+
+test('the lobby only warns about readying again when another human is seated', () => {
+  const players = extra => [{id: 'host', active: true, isBot: false}, ...extra];
+  const lobby = extra => run(['matchLength'], 'matchLength()', {state: {view: {hostId: 'host', selfId: 'host', crateLimit: null, players: players(extra)}}});
+  const note = /Changing the length asks other players to get ready again\./;
+  assert.doesNotMatch(lobby([{id: 'bot-1', active: true, isBot: true}, {id: 'bot-2', active: true, isBot: true}]), note);
+  assert.doesNotMatch(lobby([{id: 'gone', active: false, isBot: false}]), note, 'a player who left does not need to ready again');
+  assert.match(lobby([{id: 'guest', active: true, isBot: false}]), note);
+});
+
+test('the solo bid desk marks the parts the phone bar keeps on screen', () => {
+  const desk = ({role = 'restorer', blocked = '', cash = 1500} = {}) => run(['actionDock'], 'actionDock()', {
+    game: {phase: 'inspect', role, selected: 0, inspected: [], theme: 'harbor', reservePrice: 40},
+    E: {ROLES: E.ROLES, getCash: () => cash}, Clues: {abilityBlocker: () => blocked},
+    informationFor: () => ({known: false}), soloLots: () => [], soloCounts: () => ({}), abilityStatus: () => 'Ready', minimumBid: () => 40,
+  }, app);
+  assert.match(desk(), /<div class="dock-skill">/);
+  assert.match(desk({blocked: 'Not possible in this crate: no damaged objects.'}), /<div class="dock-skill is-blocked">/);
+  assert.match(desk({role: 'appraiser'}), /<div class="dock-skill has-skill-action">/);
+  assert.match(desk({cash: 10}), /<small class="dock-warning">Your cash is below the reserve\. You can pass this round\.<\/small>/);
+  assert.doesNotMatch(desk(), /dock-warning/);
+});
+
+test('a settled round, the sale screen and the result open at the next step without passing the heading', () => {
+  const box = (top, bottom) => ({getBoundingClientRect: () => ({top, bottom})});
+  const reveal = (head, button) => {
+    const scrolls = [], main = {querySelector: selector => selector === '.workbench-head' ? head : selector.endsWith('button.primary') ? button : null};
+    run(['revealNextStep'], 'revealNextStep()', {main, window: {innerHeight: 812, scrollBy: (x, y) => scrolls.push(y)}}, app);
+    return scrolls;
+  };
+  assert.deepEqual(reveal(box(-1594, -1425), box(1125, 1172)), [-1602], 'a page left below the heading comes back up to it');
+  assert.deepEqual(reveal(box(470, 600), box(3192, 3240)), [462], 'the sale button far below stops the scroll at the heading');
+  assert.deepEqual(reveal(box(470, 600), box(900, 948)), [144], 'a nearby button scrolls only as far as it needs');
+  assert.deepEqual(reveal(box(8, 200), box(351, 399)), [], 'a visible button leaves the page alone');
+});
+
+test('solo render reveals the next step once, when the sale screen first opens', () => {
+  const calls = [], main = {innerHTML: '', contains: () => false, querySelectorAll: () => [], insertAdjacentHTML() {}};
+  const document = {activeElement: null, body: {classList: {toggle() {}}, dataset: {}}};
+  const renderAt = (phase, renderedPhase) => runInNewContext(extract('render', app) + '\nrender();', {
+    game: {phase, round: 3, history: [], winner: null}, session: {seed: 1, auctionNumber: 1}, main, document, E,
+    rolePicker: () => '', inspection: () => '', roundSummary: () => '', result: () => '', disposal: () => '', sessionBanner: () => '', bidderSeats: () => '',
+    L: {localize() {}}, bind() {}, bindNotebook() {}, Tutorial: {bind() {}}, Show: {sourceMarkup: () => '', present() {}},
+    roundKey: () => 'solo', renderedRound: 'solo', renderedPhase, thinking: {}, updateThinking() {}, revealTable() {}, revealNextStep() { calls.push(phase); },
+  });
+  renderAt('dispose', 'bid');
+  renderAt('dispose', 'dispose');
+  renderAt('inspect', 'round-summary');
+  assert.deepEqual(calls, ['dispose'], 'choosing sale options re-renders without moving the page');
+});
+
+test('the room sale screen opens at its heading, never past it', () => {
+  const box = (top, bottom) => ({getBoundingClientRect: () => ({top, bottom})});
+  const reveal = (phase, head, button) => {
+    const scrolls = [], main = {querySelector: selector => selector === '.sale-disposal .reveal-main' ? head : selector === '#online-sell' ? button : null};
+    run(['revealSale'], 'revealSale()', {state: {view: {phase}}, main, window: {innerHeight: 812, scrollBy: (x, y) => scrolls.push(y)}});
+    return scrolls;
+  };
+  assert.deepEqual(reveal('dispose', box(-1362, 188), box(579, 629)), [-1370], 'a page left below the heading comes back up to it');
+  assert.deepEqual(reveal('dispose', box(470, 2020), box(2400, 2450)), [462], 'a sale button far below stops the scroll at the heading');
+  assert.deepEqual(reveal('dispose', box(-1362, 188), null), [-1370], 'a waiting seat also sees who won');
+  assert.deepEqual(reveal('dispose', box(8, 600), box(650, 700)), []);
+  assert.deepEqual(reveal('result', box(-1362, 188), box(579, 629)), [], 'only the sale screen');
+});

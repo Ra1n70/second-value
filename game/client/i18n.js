@@ -211,6 +211,7 @@
     'Your role uses ordinary sale prices.':'你的角色按普通售价出售。',
     'Sale proceeds include ability bonuses.':'售出收入已包含能力奖金。',
     'Final profit / loss = net recovery − winning bid.':'最终盈亏 = 扣费后回收金额 − 成交价。',
+    'Sale preview':'出售预览',
     'Sale preview unavailable.':'暂时无法预览出售方案。',
     'Round decisions':'每轮判断',
     'Optional: record your thinking before bids reveal. This does not submit a bid.':'选填：报价揭晓前，记下你的判断。此处不会提交报价。',

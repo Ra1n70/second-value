@@ -437,7 +437,7 @@ body.tabletop-mode .action-review .error{color:#a13a2b}
   body.tabletop-mode .workbench-grid .object-range{font-size:13px!important;gap:4px}
   body.tabletop-mode .workbench-grid .object-letter{font-size:19px;min-width:23px}
 }
-@media(min-width:851px) and (max-height:850px){
+@media(min-width:851px) and (max-height:960px){
   body.tabletop-mode .site-header{min-height:45px;padding:3px 0}
   body.tabletop-mode .brand-title{font-size:23px}
   body.tabletop-mode .wordmark .eyebrow{display:none}
@@ -518,7 +518,7 @@ body.tabletop-mode .workbench-head .workbench-tools{display:flex;align-items:cen
 .workbench-tools .reserve-compact.is-unaffordable>summary strong{color:var(--negative)}
 .reserve-compact .reserve-explanation{position:absolute;right:0;top:calc(100% + 6px);z-index:40;width:min(340px,calc(100vw - 40px));padding:14px 16px;border:1px solid #a88c5280;border-radius:4px;background:#1a3027;box-shadow:0 8px 25px #071c1a70;color:#d9dac8;line-height:1.65}
 .reserve-compact .reserve-explanation small{display:block;margin-top:5px;color:#c6c4ae;font-size:13px;line-height:1.6}
-@media(min-width:851px) and (max-height:850px){
+@media(min-width:851px) and (max-height:960px){
   body.tabletop-mode .compact-status.session-banner{margin-bottom:4px;padding-bottom:4px}
   body.tabletop-mode .bidder-seats{margin-bottom:6px;padding-bottom:5px}
   body.tabletop-mode .workbench-head{margin-bottom:6px}
@@ -531,6 +531,11 @@ body.tabletop-mode .workbench-head .workbench-tools{display:flex;align-items:cen
   body.tabletop-mode .workbench-head>div:first-child{flex-basis:100%}
   body.tabletop-mode .workbench-head .workbench-tools{width:100%;justify-content:flex-start;gap:8px 10px}
   .workbench-tools .reserve-compact .reserve-explanation{left:0;right:auto}
+  /* The rules toggle can land anywhere in the wrapped tools, so its label stays on one line and its
+     panel opens from the tools' left edge instead of hanging off the screen. */
+  body.tabletop-mode .workbench-head .workbench-tools{position:relative}
+  body.tabletop-mode .workbench-tools .round-rules{position:static;max-width:none}
+  body.tabletop-mode .workbench-tools .round-rules-content{left:0;right:auto}
 }
 @media(prefers-reduced-motion:no-preference){
   .sprite-image{animation:lot-appear .22s ease-out}
@@ -542,3 +547,34 @@ body.tabletop-mode .workbench-head .workbench-tools{display:flex;align-items:cen
 /* Fact columns stack before words like "Authenticity" would split, and stamps never break inside a word. */
 body.tabletop-mode .detail-facts{grid-template-columns:repeat(auto-fit,minmax(min(100%,7em),1fr))}
 .authenticity-stamp{max-width:none;white-space:nowrap;overflow-wrap:normal}
+
+/* Phones keep a one-row bid bar on screen while the bid form is closed. A blocked ability or the
+   Appraiser's tool goes under the button, so the button keeps the first row. Once the browser's
+   address bar scrolls away the page can run under the phone's gesture bar, so the bottom inset
+   keeps the buttons clear of it. */
+@media (max-width:740px) {
+  body.tabletop-mode .action-dock.dock-inspect {position:sticky;bottom:0;z-index:15;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px 12px;padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px))}
+  body.tabletop-mode .action-dock.dock-inspect .dock-context .eyebrow,
+  body.tabletop-mode .action-dock.dock-inspect .dock-context .small,
+  body.tabletop-mode .action-dock.dock-inspect .dock-skill,
+  body.tabletop-mode .action-dock.dock-inspect .dock-primary small:not(.dock-warning) {display:none}
+  body.tabletop-mode .action-dock.dock-inspect .dock-skill.has-skill-action,
+  body.tabletop-mode .action-dock.dock-inspect .dock-skill.is-blocked {display:block;grid-column:1/-1;order:3}
+  body.tabletop-mode .action-dock.dock-inspect .dock-skill.has-skill-action>p,
+  body.tabletop-mode .action-dock.dock-inspect .dock-skill.is-blocked>strong {display:none}
+  body.tabletop-mode .action-dock.dock-inspect .dock-skill.is-blocked>p {margin:0;font-size:13px;line-height:1.45}
+  body.tabletop-mode .action-dock.dock-inspect .dock-primary {display:block;grid-column:auto;width:auto}
+  body.tabletop-mode .action-dock.dock-inspect .dock-primary button {width:auto;min-height:44px}
+  /* Between rounds and after a crate, the next-step panel comes before the long bid tables and standings. */
+  body[data-phase="round-summary"] .phase-layout>.side-panel {order:-1}
+  /* After a crate the panel goes straight under the outcome, ahead of the valuation table too. */
+  body.tabletop-mode[data-phase="result"] main {display:flex;flex-direction:column}
+  body.tabletop-mode[data-phase="result"] main>* {order:2}
+  body.tabletop-mode[data-phase="result"] main>.session-banner,
+  body.tabletop-mode[data-phase="result"] main>.bidder-seats,
+  body.tabletop-mode[data-phase="result"] main>.result-heading {order:0}
+  body.tabletop-mode[data-phase="result"] main>.phase-layout {display:contents}
+  body.tabletop-mode[data-phase="result"] .phase-layout>.side-panel {order:1;margin:13px 0 20px}
+  body.tabletop-mode[data-phase="result"] .phase-layout>section {order:3}
+  body.tabletop-mode[data-phase="result"] main>.collection-new-discoveries {margin-top:0}
+}

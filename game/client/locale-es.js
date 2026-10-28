@@ -198,6 +198,7 @@
     'Your role uses ordinary sale prices.':'Tu rol vende a los precios normales.',
     'Sale proceeds include ability bonuses.':'Los ingresos de venta incluyen las bonificaciones de habilidad.',
     'Final profit / loss = net recovery − winning bid.':'Ganancia o pérdida final = ingreso neto − puja ganadora.',
+    'Sale preview':'Vista previa de la venta',
     'Sale preview unavailable.':'Vista previa de venta no disponible.',
     'Round decisions':'Decisiones por ronda',
     'Optional: record your thinking before bids reveal. This does not submit a bid.':'Opcional: anota tu razonamiento antes de que se revelen las pujas. Esto no envía una puja.',

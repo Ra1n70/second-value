@@ -112,7 +112,7 @@ test('actual render dispatch keeps comparison previews out of bidding and settle
   const document={activeElement:null,body:{classList:{toggle(){}},dataset:{}}},noPreview=()=>assert.fail('only disposal may render sale comparisons');
   for(const phase of ['inspect','bid','round-summary','result']){
     const game={phase,round:1,history:[],winner:null},context={game,session:{seed:1,auctionNumber:1},main,document,rolePicker:()=>'',inspection:()=>'',roundSummary:()=>'',result:()=>'',disposal:noPreview,sessionBanner:()=>'',bidderSeats:()=>'',L:{localize(){}},bind(){},bindNotebook(){},Tutorial:{bind(){}},Show:{sourceMarkup:()=>'',present(){}},E};
-    runInNewContext(extract(app,'render')+'\nrender();',{...context,roundKey:()=>'solo',renderedRound:'solo',thinking:{},updateThinking(){}});
+    runInNewContext(extract(app,'render')+'\nrender();',{...context,roundKey:()=>'solo',renderedRound:'solo',renderedPhase:null,thinking:{},updateThinking(){},revealNextStep(){}});
   }
   for(const phase of ['auction','round-summary','result','ended']){
     const context={state:{credentials:{code:'SALE01'},connection:'Connected',view:{phase,round:1,auctionNumber:1,lots:[],selfId:'host',self:{cash:100,role:'appraiser'},winnerId:null}},renderedTurn:null,main,document,window:{sessionStorage:{}},toolbar:()=>'',status:()=>'',seats:()=>'',recoveryPanel:()=>'',auction:()=>'',roundSummary:()=>'',result:()=>'',disposal:noPreview,L:{localize(){}},bind(){},Tutorial:{bind(){}},updateRecoveryClocks(){},Notes:{bind(){}},Show:{sourceMarkup:()=>'',valuationMarkup:()=>''},showCurrentScene(){},E};
